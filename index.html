@@ -331,6 +331,25 @@ viewer.scene.globe.show = false;
 })();
 
 // ═══════════════════════════════════════════════════════
+//  KIAD TRAFFIC FILTER
+//  Keep: origin/dest = KIAD, or within 15 nm (catches VFR / no flight-plan)
+// ═══════════════════════════════════════════════════════
+const KIAD_LAT = 38.9531, KIAD_LON = -77.4565;
+const NM_THRESHOLD = 15;
+
+function nmFromKIAD(lat, lon) {
+  const dlat = (lat - KIAD_LAT) * 60;
+  const dlon = (lon - KIAD_LON) * 60 * Math.cos(KIAD_LAT * Math.PI / 180);
+  return Math.sqrt(dlat * dlat + dlon * dlon);
+}
+
+function isKIADTraffic(lat, lon, origin, dest) {
+  if (dest   === 'KIAD' || dest   === 'IAD') return true;
+  if (origin === 'KIAD' || origin === 'IAD') return true;
+  return nmFromKIAD(lat, lon) <= NM_THRESHOLD;
+}
+
+// ═══════════════════════════════════════════════════════
 //  AIRCRAFT TRACKING
 // ═══════════════════════════════════════════════════════
 const aircraftMap = {};
@@ -348,6 +367,7 @@ async function fetchAircraft() {
       const [icao, lat, lon, heading, alt_ft, speed, squawk,
              , ac_type, , , origin, dest, , , vspeed, callsign] = ac;
       if (!lat || !lon) continue;
+      if (!isKIADTraffic(lat, lon, origin, dest)) continue;
 
       const cs    = (callsign || icao || '????').trim().toUpperCase();
       const altM  = (alt_ft || 0) * 0.3048;
