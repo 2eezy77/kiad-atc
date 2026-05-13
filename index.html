@@ -1082,8 +1082,7 @@
       document.querySelectorAll(".pos-btn").forEach(btn =>
         btn.classList.toggle("active", btn.dataset.pos === name));
       const lbl = document.getElementById("pos-label");
-      lbl.textContent = cfg.label;
-      lbl.style.display = "block";
+      if (lbl) { lbl.textContent = cfg.label; lbl.style.display = "block"; }
       applyAircraftFilter();
       checkConflicts();
       refreshDataTags();
