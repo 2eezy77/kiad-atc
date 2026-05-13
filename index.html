@@ -2,145 +2,163 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>KIAD Flight Radar</title>
+  <title>KIAD — Full Radar</title>
   <script src="https://cesium.com/downloads/cesiumjs/releases/1.141/Build/Cesium/Cesium.js"></script>
   <link href="https://cesium.com/downloads/cesiumjs/releases/1.141/Build/Cesium/Widgets/widgets.css" rel="stylesheet" />
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body, #cesiumContainer { width: 100%; height: 100%; overflow: hidden; background: #000; }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    html, body, #cesiumContainer { width:100%; height:100%; overflow:hidden; background:#000; }
     :root {
-      --mono: 'Fira Code', 'Courier New', monospace;
+      --mono: 'Fira Code','Courier New',monospace;
       --glass: rgba(8,10,14,0.88);
-      --border: rgba(255,255,255,0.09);
+      --border: rgba(255,255,255,0.08);
       --accent: #f5c842;
       --dim: #555;
     }
 
+    /* ── top bar ── */
+    #topbar {
+      position:fixed; top:0; left:0; right:0; z-index:300;
+      display:flex; align-items:center; justify-content:center;
+      padding:10px 14px; gap:8px; pointer-events:none;
+    }
     #badge {
-      position: fixed; top: 14px; left: 14px; z-index: 200;
-      background: var(--glass); border: 1px solid var(--border);
-      border-radius: 10px; padding: 11px 16px;
-      font: 11px var(--mono); color: #bbb; line-height: 1.9;
-      pointer-events: none;
+      position:fixed; top:12px; left:14px; z-index:301;
+      background:var(--glass); border:1px solid var(--border);
+      border-radius:9px; padding:9px 14px;
+      font:10px var(--mono); color:#bbb; line-height:1.9;
+      pointer-events:none;
     }
-    #badge .icao { font-size: 20px; font-weight: 700; color: var(--accent); letter-spacing: 2px; }
-    #badge .dim  { font-size: 10px; color: var(--dim); }
+    #badge .icao { font-size:18px; font-weight:700; color:var(--accent); letter-spacing:2px; }
+    #badge .dim  { font-size:9px; color:var(--dim); }
 
-    #modes {
-      position: fixed; top: 14px; left: 50%; transform: translateX(-50%);
-      display: flex; gap: 5px; z-index: 200;
+    /* position + camera buttons */
+    #controls {
+      display:flex; gap:5px; pointer-events:all;
     }
-    .mode-btn {
-      padding: 8px 16px; border-radius: 8px;
-      background: var(--glass); border: 1px solid var(--border);
-      color: #888; font: 10px var(--mono); letter-spacing: 1.2px;
-      cursor: pointer; text-transform: uppercase; transition: all 0.15s;
+    .ctrl-group { display:flex; gap:3px; }
+    .ctrl-sep { width:1px; background:var(--border); margin:0 4px; }
+    .btn {
+      padding:7px 14px; border-radius:7px;
+      background:var(--glass); border:1px solid var(--border);
+      color:#777; font:10px var(--mono); letter-spacing:1px;
+      cursor:pointer; text-transform:uppercase; transition:all 0.15s;
     }
-    .mode-btn:hover { color: #ccc; border-color: rgba(255,255,255,0.2); }
-    .mode-btn.active { background: rgba(245,200,66,0.12); border-color: var(--accent); color: var(--accent); }
+    .btn:hover { color:#ccc; border-color:rgba(255,255,255,0.18); }
+    .btn.active { background:rgba(245,200,66,0.12); border-color:var(--accent); color:var(--accent); }
+    .btn.red    { border-color:rgba(255,60,60,0.5); color:#ff6060; }
 
+    /* conflict banner */
+    #conflict-banner {
+      position:fixed; top:54px; left:50%; transform:translateX(-50%);
+      background:rgba(200,0,0,0.9); color:#fff;
+      padding:6px 20px; border-radius:6px;
+      font:11px var(--mono); letter-spacing:1px;
+      z-index:400; display:none; pointer-events:none;
+    }
+
+    /* ── traffic list ── */
     #traffic-panel {
-      position: fixed; bottom: 14px; left: 14px; z-index: 200;
-      background: var(--glass); border: 1px solid var(--border);
-      border-radius: 10px; padding: 8px 0;
-      font: 11px var(--mono); color: #bbb;
-      max-height: 260px; overflow-y: auto; width: 270px;
+      position:fixed; bottom:14px; left:14px; z-index:200;
+      background:var(--glass); border:1px solid var(--border);
+      border-radius:10px; padding:7px 0;
+      font:10px var(--mono); color:#bbb;
+      max-height:240px; overflow-y:auto; width:260px;
     }
-    #traffic-panel::-webkit-scrollbar { width: 3px; }
-    #traffic-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+    #traffic-panel::-webkit-scrollbar { width:3px; }
+    #traffic-panel::-webkit-scrollbar-thumb { background:rgba(255,255,255,0.1); border-radius:2px; }
     #traffic-hdr {
-      padding: 3px 12px 7px; font-size: 10px; color: var(--dim);
-      letter-spacing: 2px; text-transform: uppercase;
-      border-bottom: 1px solid var(--border); margin-bottom: 2px;
+      padding:3px 12px 6px; font-size:9px; color:var(--dim);
+      letter-spacing:2px; text-transform:uppercase;
+      border-bottom:1px solid var(--border); margin-bottom:2px;
     }
-    #traffic-list { list-style: none; }
-    .tr-row {
-      display: flex; align-items: center; gap: 7px;
-      padding: 4px 12px; cursor: pointer; transition: background 0.1s;
-    }
-    .tr-row:hover { background: rgba(255,255,255,0.05); }
-    .tr-row.sel   { background: rgba(245,200,66,0.09); }
-    .tr-dot  { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
-    .tr-cs   { font-weight: 600; min-width: 78px; }
-    .tr-ty   { color: var(--dim); min-width: 36px; font-size: 10px; }
-    .tr-fl   { color: #777; min-width: 38px; text-align: right; font-size: 10px; }
-    .tr-spd  { color: #666; min-width: 38px; text-align: right; font-size: 10px; }
+    #traffic-list { list-style:none; }
+    .tr-row { display:flex; align-items:center; gap:6px; padding:3px 12px; cursor:pointer; transition:background 0.1s; }
+    .tr-row:hover { background:rgba(255,255,255,0.05); }
+    .tr-row.sel   { background:rgba(245,200,66,0.09); }
+    .tr-dot { width:6px; height:6px; border-radius:50%; flex-shrink:0; }
+    .tr-cs  { font-weight:600; min-width:72px; }
+    .tr-ty  { color:var(--dim); min-width:34px; font-size:9px; }
+    .tr-fl  { color:#666; min-width:36px; text-align:right; font-size:9px; }
+    .tr-spd { color:#555; min-width:36px; text-align:right; font-size:9px; }
 
-    /* ── Detail panel ── */
+    /* ── on-finals panel ── */
+    #finals-panel {
+      position:fixed; top:12px; left:50%; transform:translateX(-50%);
+      background:var(--glass); border:1px solid var(--border);
+      border-radius:9px; padding:10px 14px;
+      font:10px var(--mono); color:#ccc; z-index:200;
+      display:none; min-width:460px; margin-top:44px;
+    }
+    #finals-panel h4 { font-size:9px; color:var(--dim); letter-spacing:2px; text-transform:uppercase; margin-bottom:6px; }
+    .final-row { display:flex; gap:10px; align-items:center; padding:3px 0; border-top:1px solid var(--border); }
+    .final-seq  { color:var(--accent); font-weight:700; min-width:20px; }
+    .final-rwy  { color:#aaa; min-width:32px; }
+    .final-call { font-weight:600; min-width:72px; }
+    .final-dist { color:#777; min-width:46px; }
+    .final-alt  { color:#888; min-width:40px; }
+    .final-tte  { color:#666; min-width:38px; }
+    .final-tag  { font-size:8px; padding:1px 5px; border-radius:3px; font-weight:700; }
+    .tag-ifr  { background:rgba(0,255,100,0.18); color:#00ff88; }
+    .tag-vfr  { background:rgba(0,200,255,0.18); color:#00ccff; }
+    .tag-helo { background:rgba(255,170,0,0.18); color:#ffaa00; }
+
+    /* ── legend ── */
+    #legend {
+      position:fixed; bottom:14px; right:14px; z-index:200;
+      background:var(--glass); border:1px solid var(--border);
+      border-radius:10px; padding:10px 14px;
+      font:10px var(--mono); color:#bbb; min-width:170px;
+    }
+    #legend h3 { font-size:9px; color:var(--dim); letter-spacing:2px; text-transform:uppercase; margin-bottom:8px; }
+    .leg-row { display:flex; align-items:center; gap:8px; padding:3px 0; cursor:pointer; }
+    .leg-row.off { opacity:0.28; }
+    .leg-sw { width:12px; height:8px; border-radius:2px; flex-shrink:0; }
+    .leg-lbl { flex:1; }
+    #legend hr { border:none; border-top:1px solid var(--border); margin:5px 0; }
+
+    /* ── detail panel ── */
     #detail-panel {
-      position: fixed; top: 0; right: 0; z-index: 300;
-      width: 380px; height: 100%;
-      background: rgba(6,8,12,0.97); border-left: 1px solid var(--border);
-      display: flex; flex-direction: column;
-      transform: translateX(100%); transition: transform 0.3s cubic-bezier(.4,0,.2,1);
-      font: 11px var(--mono);
+      position:fixed; top:0; right:0; z-index:500;
+      width:370px; height:100%;
+      background:rgba(6,8,12,0.97); border-left:1px solid var(--border);
+      display:flex; flex-direction:column;
+      transform:translateX(100%); transition:transform 0.3s cubic-bezier(.4,0,.2,1);
+      font:11px var(--mono);
     }
-    #detail-panel.open { transform: translateX(0); }
+    #detail-panel.open { transform:translateX(0); }
+    #dp-header { padding:16px 16px 10px; border-bottom:1px solid var(--border); position:relative; flex-shrink:0; }
+    #dp-cs    { font-size:20px; font-weight:700; color:#fff; letter-spacing:1px; }
+    #dp-route { font-size:9px; color:var(--dim); margin-top:2px; }
+    #dp-close { position:absolute; top:12px; right:12px; background:none; border:none; color:var(--dim); font-size:17px; cursor:pointer; }
+    #dp-close:hover { color:#ccc; }
+    #dp-data { display:grid; grid-template-columns:1fr 1fr; padding:8px 0; border-bottom:1px solid var(--border); flex-shrink:0; }
+    .dp-cell { padding:6px 16px; }
+    .dp-lbl  { font-size:8px; color:var(--dim); letter-spacing:1.5px; text-transform:uppercase; }
+    .dp-val  { font-size:13px; color:#e8e8e8; margin-top:1px; }
+    .dp-val.hi { color:var(--accent); }
+    #dp-tabs { display:flex; flex-shrink:0; border-bottom:1px solid var(--border); }
+    .dp-tab { flex:1; padding:10px; text-align:center; font:9px var(--mono); letter-spacing:1px; text-transform:uppercase; color:var(--dim); cursor:pointer; border-bottom:2px solid transparent; transition:all 0.15s; }
+    .dp-tab:hover { color:#aaa; }
+    .dp-tab.active { color:var(--accent); border-bottom-color:var(--accent); }
+    #dp-viewer { flex:1; position:relative; background:#0a0b0e; overflow:hidden; }
+    #dp-viewer iframe { position:absolute; inset:0; width:100%; height:100%; border:none; }
+    #dp-placeholder { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; color:var(--dim); font-size:11px; line-height:2; text-align:center; }
+    #dp-placeholder .icon { font-size:32px; margin-bottom:8px; opacity:0.2; }
+    #dp-loading { position:absolute; inset:0; background:rgba(6,8,12,0.85); display:flex; align-items:center; justify-content:center; color:var(--dim); font-size:10px; }
+    #dp-loading.hidden { display:none; }
 
-    #dp-header {
-      padding: 18px 18px 12px; border-bottom: 1px solid var(--border);
-      position: relative; flex-shrink: 0;
-    }
-    #dp-callsign { font-size: 22px; font-weight: 700; color: #fff; letter-spacing: 1px; }
-    #dp-route    { font-size: 10px; color: var(--dim); margin-top: 2px; }
-    #dp-close {
-      position: absolute; top: 14px; right: 14px;
-      background: none; border: none; color: var(--dim);
-      font-size: 18px; cursor: pointer; line-height: 1;
-    }
-    #dp-close:hover { color: #ccc; }
+    /* ── toast ── */
+    #toast { position:fixed; bottom:16px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.88); color:#e8e8e8; padding:6px 16px; border-radius:18px; font:10px var(--mono); z-index:999; opacity:0; transition:opacity 0.4s; pointer-events:none; white-space:nowrap; }
+    #toast.show { opacity:1; }
 
-    #dp-data {
-      display: grid; grid-template-columns: 1fr 1fr;
-      padding: 10px 0; border-bottom: 1px solid var(--border); flex-shrink: 0;
-    }
-    .dp-cell { padding: 7px 18px; }
-    .dp-lbl  { font-size: 9px; color: var(--dim); letter-spacing: 1.5px; text-transform: uppercase; }
-    .dp-val  { font-size: 14px; color: #e8e8e8; margin-top: 1px; }
-    .dp-val.hi { color: var(--accent); }
-
-    #dp-tabs { display: flex; flex-shrink: 0; border-bottom: 1px solid var(--border); }
-    .dp-tab {
-      flex: 1; padding: 11px; text-align: center;
-      font: 10px var(--mono); letter-spacing: 1.2px; text-transform: uppercase;
-      color: var(--dim); cursor: pointer; transition: all 0.15s;
-      border-bottom: 2px solid transparent;
-    }
-    .dp-tab:hover { color: #aaa; }
-    .dp-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
-
-    #dp-viewer {
-      flex: 1; position: relative; background: #0a0b0e; overflow: hidden;
-    }
-    #dp-viewer iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: none; }
-    #dp-placeholder {
-      position: absolute; inset: 0; display: flex; flex-direction: column;
-      align-items: center; justify-content: center;
-      color: var(--dim); font-size: 12px; line-height: 2; text-align: center;
-    }
-    #dp-placeholder .icon { font-size: 36px; margin-bottom: 10px; opacity: 0.25; }
-    #dp-loading {
-      position: absolute; inset: 0; background: rgba(6,8,12,0.85);
-      display: flex; align-items: center; justify-content: center;
-      color: var(--dim); font-size: 11px; letter-spacing: 1px;
-    }
-    #dp-loading.hidden { display: none; }
-
-    #toast {
-      position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%);
-      background: rgba(0,0,0,0.88); color: #e8e8e8;
-      padding: 7px 18px; border-radius: 20px;
-      font: 11px var(--mono); z-index: 1000;
-      opacity: 0; transition: opacity 0.4s; pointer-events: none; white-space: nowrap;
-    }
-    #toast.show { opacity: 1; }
-
-    .cesium-widget-credits, .cesium-credit-container { display: none !important; }
+    .cesium-widget-credits, .cesium-credit-container { display:none !important; }
   </style>
 </head>
 <body>
 <div id="cesiumContainer"></div>
 
+<!-- Badge -->
 <div id="badge">
   <div class="icao">KIAD</div>
   Washington Dulles International<br/>
@@ -148,21 +166,67 @@
   <span class="dim" id="ac-count">— aircraft</span>
 </div>
 
-<div id="modes">
-  <button class="mode-btn active" onclick="setMode('FREE')"   id="btn-FREE">Free</button>
-  <button class="mode-btn"        onclick="setMode('TOWER')"  id="btn-TOWER">Tower</button>
-  <button class="mode-btn"        onclick="setMode('FOLLOW')" id="btn-FOLLOW">Follow</button>
+<!-- Top controls -->
+<div id="topbar">
+  <div id="controls">
+    <div class="ctrl-group">
+      <button class="btn" onclick="setATCPos('GND')"   data-pos="GND">GND</button>
+      <button class="btn" onclick="setATCPos('TOWER')" data-pos="TOWER">TWR</button>
+      <button class="btn active" onclick="setATCPos('RADAR')" data-pos="RADAR">RADAR</button>
+    </div>
+    <div class="ctrl-sep"></div>
+    <div class="ctrl-group">
+      <button class="btn active" onclick="setCam('FREE')"   id="cam-FREE">Free</button>
+      <button class="btn"        onclick="setCam('TOWER')"  id="cam-TOWER">Tower</button>
+      <button class="btn"        onclick="setCam('FOLLOW')" id="cam-FOLLOW">Follow</button>
+    </div>
+  </div>
 </div>
 
+<!-- Conflict banner -->
+<div id="conflict-banner"></div>
+
+<!-- On-finals panel -->
+<div id="finals-panel"></div>
+
+<!-- Traffic list -->
 <div id="traffic-panel">
-  <div id="traffic-hdr">Live Traffic — <span id="traffic-count">0</span></div>
+  <div id="traffic-hdr">KIAD Traffic — <span id="traffic-count">0</span></div>
   <ul id="traffic-list"></ul>
 </div>
 
+<!-- Layer legend -->
+<div id="legend">
+  <h3>Layers</h3>
+  <div class="leg-row" data-layer="runways">   <div class="leg-sw" style="background:#f5c842"></div><span class="leg-lbl">Runways</span></div>
+  <div class="leg-row" data-layer="ils">       <div class="leg-sw" style="background:#00d4ff"></div><span class="leg-lbl">ILS Funnels</span></div>
+  <div class="leg-row" data-layer="centerlines"><div class="leg-sw" style="background:#ffffff55"></div><span class="leg-lbl">Centerlines</span></div>
+  <div class="leg-row" data-layer="classb">    <div class="leg-sw" style="background:#b060ff"></div><span class="leg-lbl">Class B</span></div>
+  <div class="leg-row" data-layer="classd">    <div class="leg-sw" style="background:#4488ff"></div><span class="leg-lbl">Class D</span></div>
+  <div class="leg-row off" data-layer="routes"><div class="leg-sw" style="background:#88aaff"></div><span class="leg-lbl">Routes</span></div>
+  <div class="leg-row" data-layer="specialuse"><div class="leg-sw" style="background:#ff9900"></div><span class="leg-lbl">Special Use</span></div>
+  <div class="leg-row" data-layer="inference"> <div class="leg-sw" style="background:#00aaff55"></div><span class="leg-lbl">Inference Zones</span></div>
+  <div class="leg-row off" data-layer="grid">  <div class="leg-sw" style="background:#334488"></div><span class="leg-lbl">Lat/Lon Grid</span></div>
+  <hr/>
+  <div class="leg-row" style="cursor:default; pointer-events:none">
+    <div class="leg-sw" style="background:#00ff88"></div><span class="leg-lbl" style="color:#777">IFR</span>
+  </div>
+  <div class="leg-row" style="cursor:default; pointer-events:none">
+    <div class="leg-sw" style="background:#00ccff"></div><span class="leg-lbl" style="color:#777">VFR</span>
+  </div>
+  <div class="leg-row" style="cursor:default; pointer-events:none">
+    <div class="leg-sw" style="background:#ff44ff"></div><span class="leg-lbl" style="color:#777">IFR Helo</span>
+  </div>
+  <div class="leg-row" style="cursor:default; pointer-events:none">
+    <div class="leg-sw" style="background:#ffaa00"></div><span class="leg-lbl" style="color:#777">VFR Helo</span>
+  </div>
+</div>
+
+<!-- Detail panel -->
 <div id="detail-panel">
   <div id="dp-header">
-    <button id="dp-close" onclick="deselectAircraft()">✕</button>
-    <div id="dp-callsign">—</div>
+    <button id="dp-close" onclick="deselectAC()">✕</button>
+    <div id="dp-cs">—</div>
     <div id="dp-route">—</div>
   </div>
   <div id="dp-data">
@@ -181,7 +245,7 @@
   </div>
   <div id="dp-viewer">
     <div id="dp-placeholder"><div class="icon">✈</div>Select an aircraft<br/>to view 3D model</div>
-    <div id="dp-loading" class="hidden">Loading model…</div>
+    <div id="dp-loading" class="hidden">Loading…</div>
     <iframe id="dp-iframe" src="" allow="autoplay; fullscreen; vr" allowfullscreen style="display:none"></iframe>
   </div>
 </div>
@@ -189,483 +253,784 @@
 <div id="toast"></div>
 
 <script>
-// ═══════════════════════════════════════════════════════
-//  CONFIG
-// ═══════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════
+//  KEYS
+// ═══════════════════════════════════════════════
 const CESIUM_TOKEN = "__CESIUM_TOKEN__";
 const GOOGLE_KEY   = "__GOOGLE_KEY__";
 const GSPLAT_ASSET_ID = null; // Cesium ion asset ID — set when KIAD splat is ready
 
-// ═══════════════════════════════════════════════════════
-//  3D MODEL URLS  (Flightradar24 open-source GLB library)
-//  github.com/Flightradar24/fr24-3d-models  — MIT-ish, CORS *
-// ═══════════════════════════════════════════════════════
-const GLB_BASE = 'https://raw.githubusercontent.com/Flightradar24/fr24-3d-models/master/models/';
-const GLB_MAP  = {
-  // Airbus narrowbody
-  A318:'a318.glb', A319:'a319.glb', A320:'a320.glb', A321:'a321.glb',
-  A20N:'a320.glb', A21N:'a321.glb',
-  // Airbus widebody
-  A332:'a332.glb', A333:'a333.glb', A343:'a343.glb', A346:'a346.glb',
-  A359:'a359.glb', A380:'a380.glb',
-  // Boeing 737
-  B736:'b736.glb', B737:'b737.glb', B738:'b738.glb', B739:'b739.glb',
-  B7M7:'b737.glb', B7M8:'b738.glb', B7M9:'b739.glb',
-  // Boeing 747
-  B744:'b744.glb', B748:'b748.glb',
-  // Boeing 757/767
-  B752:'b752.glb', B753:'b753.glb',
-  B762:'b762.glb', B763:'b763.glb', B764:'b764.glb',
-  // Boeing 777
-  B772:'b772.glb', B773:'b773.glb', B77W:'b773.glb',
-  // Boeing 787
-  B788:'b788.glb', B789:'b789.glb', B78X:'b789.glb',
-  // Bombardier
-  CRJ2:'crj700.glb', CRJ7:'crj700.glb', CRJ9:'crj900.glb', CRJX:'crj900.glb',
-  BCS1:'cs100.glb',  BCS3:'cs300.glb',
-  // Embraer
-  E170:'e170.glb', E175:'e170.glb', E190:'e190.glb', E195:'e190.glb',
-  E75L:'e170.glb', E75S:'e170.glb',
-  // Turboprop
-  AT43:'atr42.glb', AT45:'atr42.glb', AT72:'atr42.glb', AT75:'atr42.glb', AT76:'atr42.glb',
-  DH8A:'atr42.glb', DH8B:'atr42.glb', DH8C:'atr42.glb', DH8D:'atr42.glb',
-  // Business jet
-  C25A:'citation.glb', C25B:'citation.glb', C25C:'citation.glb',
-  C550:'citation.glb', C56X:'citation.glb', C680:'citation.glb',
-  // GA
-  PA28:'pa28.glb',
-};
-const GLB_DEFAULT = 'b738.glb';
-const GLB_HELI    = 'heli.glb';
+// ═══════════════════════════════════════════════
+//  CONSTANTS
+// ═══════════════════════════════════════════════
+const DEG = Math.PI / 180, FT = 0.3048, NM = 1852, EARTH = 6371000;
+const KIAD_ELEV = 95, SURFACE_PAD = 6;
+const KIAD_CENTER = [-77.4558, 38.9445];
+const DCA_POS     = [-77.0402, 38.8512];
 
-function glbUrl(ac_type, helo) {
-  if (helo) return GLB_BASE + GLB_HELI;
-  const t = (ac_type || '').toUpperCase().replace(/-/g, '');
-  return GLB_BASE + (GLB_MAP[t] || GLB_DEFAULT);
+// ═══════════════════════════════════════════════
+//  GEO HELPERS
+// ═══════════════════════════════════════════════
+function offset(lon, lat, bearingDeg, distM) {
+  const φ1=lat*DEG, λ1=lon*DEG, θ=bearingDeg*DEG, δ=distM/EARTH;
+  const φ2=Math.asin(Math.sin(φ1)*Math.cos(δ)+Math.cos(φ1)*Math.sin(δ)*Math.cos(θ));
+  const λ2=λ1+Math.atan2(Math.sin(θ)*Math.sin(δ)*Math.cos(φ1),Math.cos(δ)-Math.sin(φ1)*Math.sin(φ2));
+  return [λ2/DEG, φ2/DEG];
+}
+function distNm(lon1,lat1,lon2,lat2) {
+  const R=3440.065, dLat=(lat2-lat1)*DEG, dLon=(lon2-lon1)*DEG;
+  const a=Math.sin(dLat/2)**2+Math.cos(lat1*DEG)*Math.cos(lat2*DEG)*Math.sin(dLon/2)**2;
+  return 2*R*Math.asin(Math.sqrt(a));
+}
+function buildCircle(lon,lat,radiusNm,altM,segs=90) {
+  return Array.from({length:segs+1},(_,i)=>{
+    const p=offset(lon,lat,(i/segs)*360,radiusNm*NM);
+    return Cesium.Cartesian3.fromDegrees(p[0],p[1],altM);
+  });
+}
+function buildVerticals(lon,lat,radiusNm,floorM,ceilM,count=16) {
+  return Array.from({length:count},(_,i)=>{
+    const p=offset(lon,lat,(i/count)*360,radiusNm*NM);
+    return [Cesium.Cartesian3.fromDegrees(p[0],p[1],floorM),
+            Cesium.Cartesian3.fromDegrees(p[0],p[1],ceilM)];
+  });
 }
 
-// ═══════════════════════════════════════════════════════
-//  SKETCHFAB panel embeds  [exterior_id, cockpit_id]
-// ═══════════════════════════════════════════════════════
-const SF_MAP = (() => {
-  const CK_737 = '1e2e2ddbebf84633b4cb6098333346dc';
-  const CK_A32 = 'feaa475ce5824121be0380a42987007f';
-  const EX_737 = '600a75a0b6b04517b31de66b27f0b110';
-  const EX_A32 = '7b8910d3cf824e6399c4ca75a31130ed';
-  const EX_777 = '322e7961d2024bba834887878d2d49a2';
-  const EX_787 = '3ba8a5275d0e41968b34d367c34e8f0f';
-  const m = {
-    A318:[EX_A32,CK_A32], A319:[EX_A32,CK_A32], A320:[EX_A32,CK_A32],
-    A321:[EX_A32,CK_A32], A20N:[EX_A32,CK_A32], A21N:[EX_A32,CK_A32],
-    A332:[EX_A32,CK_A32], A333:[EX_A32,CK_A32], A359:[EX_A32,CK_A32], A380:[EX_777,CK_A32],
-    B736:[EX_737,CK_737], B737:[EX_737,CK_737], B738:[EX_737,CK_737], B739:[EX_737,CK_737],
-    B7M7:[EX_737,CK_737], B7M8:[EX_737,CK_737], B7M9:[EX_737,CK_737],
-    B772:[EX_777,CK_737], B773:[EX_777,CK_737], B77W:[EX_777,CK_737],
-    B788:[EX_787,CK_737], B789:[EX_787,CK_737], B78X:[EX_787,CK_737],
-  };
-  return { m, DEF: [EX_737, CK_737] };
-})();
+// ═══════════════════════════════════════════════
+//  RUNWAY & ILS DATA
+// ═══════════════════════════════════════════════
+const RUNWAYS = [
+  { id:"01L/19R", width:60, ends:[{id:"01L",pos:[-77.4748102,38.9449665]},{id:"19R",pos:[-77.4744400,38.9707733]}] },
+  { id:"01C/19C", width:60, ends:[{id:"01C",pos:[-77.4597775,38.9390663]},{id:"19C",pos:[-77.4593181,38.9706409]}] },
+  { id:"01R/19L", width:60, ends:[{id:"01R",pos:[-77.4364481,38.9237568]},{id:"19L",pos:[-77.4359746,38.9553296]}] },
+  { id:"12/30",   width:60, ends:[{id:"12", pos:[-77.4904412,38.9437749]},{id:"30", pos:[-77.4558960,38.9336110]}] },
+];
+const ILS = [
+  {rwy:"19L",threshold:[-77.4359746,38.9553296],inboundHdg:181,rangeNm:10},
+  {rwy:"19C",threshold:[-77.4593181,38.9706409],inboundHdg:181,rangeNm:10},
+  {rwy:"19R",threshold:[-77.4744400,38.9707733],inboundHdg:181,rangeNm:10},
+  {rwy:"01L",threshold:[-77.4748102,38.9449665],inboundHdg:  1,rangeNm: 8},
+  {rwy:"30", threshold:[-77.4558960,38.9336110],inboundHdg:111,rangeNm: 8},
+];
+const CLASS_B_CENTER = [-77.4558,38.9445];
+const CLASS_B_RINGS  = [
+  {radiusNm: 5,floorFt:   0,ceilFt:7000},
+  {radiusNm:10,floorFt:1900,ceilFt:7000},
+  {radiusNm:15,floorFt:3500,ceilFt:7000},
+  {radiusNm:22,floorFt:4500,ceilFt:7000},
+];
+const CLASS_D = {radiusNm:4.3,floorFt:0,ceilFt:3700};
 
-function sfEmbed(ac_type, tab) {
-  const t = (ac_type || '').toUpperCase().replace(/-/g,'');
-  const ids = SF_MAP.m[t] || SF_MAP.DEF;
-  const id  = tab === 'cockpit' ? ids[1] : ids[0];
-  return `https://sketchfab.com/models/${id}/embed?autostart=1&ui_theme=dark&camera=0&preload=1`;
-}
-
-// ═══════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════
 //  AIRCRAFT CLASSIFICATION
-// ═══════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════
 const HELO_TYPES = new Set([
   'R22','R44','R66','B06','B47','B407','B412','B427','B429','B430','B462',
   'EC20','EC25','EC30','EC35','EC45','EC55','AS32','AS50','AS55','AS65',
   'H125','H130','H145','H155','H160','H175','S61','S70','S76','S92',
   'A109','A119','A139','A169','A189','MD52','MD6X','MH6','OH58','AW09','AW19','AW39',
 ]);
+const HEAVY_TYPES = new Set([
+  'B744','B748','B77W','B77L','B772','B773','B778','B779','B788','B789','B78X',
+  'A332','A333','A338','A339','A342','A343','A345','A346','A359','A35K','A388',
+  'B762','B763','B764','MD11','L101',
+]);
 const isHelo = t => t ? HELO_TYPES.has(t.toUpperCase()) : false;
-const isVFR  = sq => sq === '1200' || sq === 1200;
-function acColor(type, sq) {
-  if (isHelo(type)) return isVFR(sq) ? '#ffaa00' : '#ff44ff';
-  return isVFR(sq) ? '#00ccff' : '#00ff88';
+const isVFR  = sq => sq==='1200'||sq===1200;
+function acColor(type,sq) {
+  if (isHelo(type)) return isVFR(sq)?'#ffaa00':'#ff44ff';
+  return isVFR(sq)?'#00ccff':'#00ff88';
+}
+function wakeCat(t) {
+  if (!t) return 'L';
+  if (t==='A388') return 'S';
+  if (HEAVY_TYPES.has(t.toUpperCase())) return 'H';
+  if (['B752','B753'].includes(t.toUpperCase())) return 'B757';
+  return 'L';
 }
 
-// ═══════════════════════════════════════════════════════
-//  VIEWER
-// ═══════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════
+//  GLB MODEL MAP  (FR24 open-source library)
+// ═══════════════════════════════════════════════
+const GLB_BASE = 'https://raw.githubusercontent.com/Flightradar24/fr24-3d-models/master/models/';
+const GLB_MAP = {
+  A318:'a318.glb',A319:'a319.glb',A320:'a320.glb',A321:'a321.glb',
+  A20N:'a320.glb',A21N:'a321.glb',
+  A332:'a332.glb',A333:'a333.glb',A343:'a343.glb',A346:'a346.glb',
+  A359:'a359.glb',A380:'a380.glb',
+  B736:'b736.glb',B737:'b737.glb',B738:'b738.glb',B739:'b739.glb',
+  B7M7:'b737.glb',B7M8:'b738.glb',B7M9:'b739.glb',
+  B744:'b744.glb',B748:'b748.glb',
+  B752:'b752.glb',B753:'b753.glb',
+  B762:'b762.glb',B763:'b763.glb',B764:'b764.glb',
+  B772:'b772.glb',B773:'b773.glb',B77W:'b773.glb',
+  B788:'b788.glb',B789:'b789.glb',B78X:'b789.glb',
+  CRJ2:'crj700.glb',CRJ7:'crj700.glb',CRJ9:'crj900.glb',CRJX:'crj900.glb',
+  BCS1:'cs100.glb',BCS3:'cs300.glb',
+  E170:'e170.glb',E175:'e170.glb',E190:'e190.glb',E195:'e190.glb',
+  E75L:'e170.glb',E75S:'e170.glb',
+  AT43:'atr42.glb',AT72:'atr42.glb',AT76:'atr42.glb',
+  DH8D:'atr42.glb',
+  C25A:'citation.glb',C25B:'citation.glb',C550:'citation.glb',C56X:'citation.glb',
+  PA28:'pa28.glb',
+};
+function glbUrl(ac_type, helo) {
+  if (helo) return GLB_BASE+'heli.glb';
+  const t=(ac_type||'').toUpperCase().replace(/-/g,'');
+  return GLB_BASE+(GLB_MAP[t]||'b738.glb');
+}
+
+// ═══════════════════════════════════════════════
+//  SKETCHFAB PANEL EMBEDS
+// ═══════════════════════════════════════════════
+const SF = (() => {
+  const C737='1e2e2ddbebf84633b4cb6098333346dc', CA32='feaa475ce5824121be0380a42987007f';
+  const E737='600a75a0b6b04517b31de66b27f0b110', EA32='7b8910d3cf824e6399c4ca75a31130ed';
+  const E777='322e7961d2024bba834887878d2d49a2', E787='3ba8a5275d0e41968b34d367c34e8f0f';
+  const m={
+    A318:[EA32,CA32],A319:[EA32,CA32],A320:[EA32,CA32],A321:[EA32,CA32],A20N:[EA32,CA32],A21N:[EA32,CA32],
+    A332:[EA32,CA32],A333:[EA32,CA32],A359:[EA32,CA32],A380:[E777,CA32],
+    B736:[E737,C737],B737:[E737,C737],B738:[E737,C737],B739:[E737,C737],
+    B7M7:[E737,C737],B7M8:[E737,C737],B7M9:[E737,C737],
+    B772:[E777,C737],B773:[E777,C737],B77W:[E777,C737],
+    B788:[E787,C737],B789:[E787,C737],B78X:[E787,C737],
+  };
+  return {m, DEF:[E737,C737]};
+})();
+function sfEmbed(ac_type,tab) {
+  const t=(ac_type||'').toUpperCase().replace(/-/g,'');
+  const ids=SF.m[t]||SF.DEF;
+  return `https://sketchfab.com/models/${tab==='cockpit'?ids[1]:ids[0]}/embed?autostart=1&ui_theme=dark&camera=0&preload=1`;
+}
+
+// ═══════════════════════════════════════════════
+//  KIAD TRAFFIC FILTER  (origin/dest or within 15nm)
+// ═══════════════════════════════════════════════
+function nmFromKIAD(lat,lon) {
+  const dlat=(lat-38.9531)*60, dlon=(lon-(-77.4565))*60*Math.cos(38.9531*DEG);
+  return Math.sqrt(dlat*dlat+dlon*dlon);
+}
+function isKIAD(lat,lon,origin,dest) {
+  if (dest==='KIAD'||dest==='IAD') return true;
+  if (origin==='KIAD'||origin==='IAD') return true;
+  return nmFromKIAD(lat,lon)<=15;
+}
+
+// ═══════════════════════════════════════════════
+//  VIEWER INIT
+// ═══════════════════════════════════════════════
 Cesium.Ion.defaultAccessToken = CESIUM_TOKEN;
-const viewer = new Cesium.Viewer('cesiumContainer', {
-  animation:false, baseLayerPicker:false, fullscreenButton:false,
-  geocoder:false, homeButton:false, infoBox:false,
-  navigationHelpButton:false, sceneModePicker:false,
-  timeline:false, selectionIndicator:false, shadows:false,
-  terrainProvider: new Cesium.EllipsoidTerrainProvider(),
-  skyBox: false,
-  skyAtmosphere: new Cesium.SkyAtmosphere(),
+const viewer = new Cesium.Viewer('cesiumContainer',{
+  animation:false,baseLayerPicker:false,fullscreenButton:false,
+  geocoder:false,homeButton:false,infoBox:false,
+  navigationHelpButton:false,sceneModePicker:false,
+  timeline:false,selectionIndicator:false,shadows:false,
+  terrainProvider:new Cesium.EllipsoidTerrainProvider(),
+  skyBox:false, skyAtmosphere:new Cesium.SkyAtmosphere(),
 });
 viewer.scene.backgroundColor = Cesium.Color.fromCssColorString('#080a0e');
 viewer.scene.globe.show = false;
 
 // Google Photorealistic 3D Tiles
-(async () => {
+(async()=>{
   try {
-    const t = await Cesium.Cesium3DTileset.fromUrl(
-      `https://tile.googleapis.com/v1/3dtiles/root.json?key=${GOOGLE_KEY}`
-    );
-    t.maximumScreenSpaceError = 8;
+    const t=await Cesium.Cesium3DTileset.fromUrl(
+      `https://tile.googleapis.com/v1/3dtiles/root.json?key=${GOOGLE_KEY}`);
+    t.maximumScreenSpaceError=8;
     viewer.scene.primitives.add(t);
-    viewer.camera.flyTo({
-      destination: Cesium.Cartesian3.fromDegrees(-77.4565, 38.9531, 9000),
-      orientation: { heading: Cesium.Math.toRadians(345), pitch: Cesium.Math.toRadians(-42), roll: 0 },
-      duration: 0,
-    });
-  } catch(e) { console.error('3D Tiles:', e); }
+  } catch(e){console.error('3D Tiles:',e);}
 })();
 
 // Optional Gaussian Splat layer
-(async () => {
+(async()=>{
   if (!GSPLAT_ASSET_ID) return;
-  try {
-    viewer.scene.primitives.add(await Cesium.Cesium3DTileset.fromIonAssetId(GSPLAT_ASSET_ID));
-    toast(`✦ Gaussian Splat loaded — ion asset ${GSPLAT_ASSET_ID}`);
-  } catch(e) { console.error('GS layer:', e); }
+  try { viewer.scene.primitives.add(await Cesium.Cesium3DTileset.fromIonAssetId(GSPLAT_ASSET_ID)); toast('✦ Gaussian Splat loaded'); } catch(e){}
 })();
 
-// ═══════════════════════════════════════════════════════
-//  KIAD TRAFFIC FILTER
-//  Keep: origin/dest = KIAD, or within 15 nm (catches VFR / no flight-plan)
-// ═══════════════════════════════════════════════════════
-const KIAD_LAT = 38.9531, KIAD_LON = -77.4565;
-const NM_THRESHOLD = 15;
+// ═══════════════════════════════════════════════
+//  LAYER SYSTEM
+// ═══════════════════════════════════════════════
+const layers  = {runways:[],centerlines:[],ils:[],classb:[],classd:[],routes:[],specialuse:[],inference:[],grid:[]};
+const visible = {runways:true,centerlines:true,ils:true,classb:true,classd:true,routes:false,specialuse:true,inference:true,grid:false};
 
-function nmFromKIAD(lat, lon) {
-  const dlat = (lat - KIAD_LAT) * 60;
-  const dlon = (lon - KIAD_LON) * 60 * Math.cos(KIAD_LAT * Math.PI / 180);
-  return Math.sqrt(dlat * dlat + dlon * dlon);
+function mkLine(pts,color,width,alpha,failAlpha) {
+  const c=Cesium.Color.fromCssColorString(color).withAlpha(alpha);
+  const f=Cesium.Color.fromCssColorString(color).withAlpha(failAlpha);
+  return viewer.entities.add({polyline:{positions:pts,width,arcType:Cesium.ArcType.NONE,
+    material:new Cesium.ColorMaterialProperty(c),
+    depthFailMaterial:new Cesium.ColorMaterialProperty(f)}});
 }
 
-function isKIADTraffic(lat, lon, origin, dest) {
-  if (dest   === 'KIAD' || dest   === 'IAD') return true;
-  if (origin === 'KIAD' || origin === 'IAD') return true;
-  return nmFromKIAD(lat, lon) <= NM_THRESHOLD;
+// ── Runways ──
+function addRunways(){
+  RUNWAYS.forEach(r=>{
+    const [x1,y1]=r.ends[0].pos,[x2,y2]=r.ends[1].pos;
+    layers.runways.push(viewer.entities.add({corridor:{
+      positions:Cesium.Cartesian3.fromDegreesArray([x1,y1,x2,y2]),
+      width:r.width,material:Cesium.Color.fromCssColorString('#f5c842'),
+      classificationType:Cesium.ClassificationType.CESIUM_3D_TILE,
+    }}));
+    r.ends.forEach(e=>layers.runways.push(viewer.entities.add({
+      position:Cesium.Cartesian3.fromDegrees(e.pos[0],e.pos[1],KIAD_ELEV+30),
+      label:{text:e.id,font:'bold 12px monospace',fillColor:Cesium.Color.fromCssColorString('#f5c842'),
+        outlineColor:Cesium.Color.BLACK,outlineWidth:3,style:Cesium.LabelStyle.FILL_AND_OUTLINE,
+        verticalOrigin:Cesium.VerticalOrigin.BOTTOM,
+        disableDepthTestDistance:Number.POSITIVE_INFINITY,pixelOffset:new Cesium.Cartesian2(0,-4)},
+    })));
+  });
 }
 
-// ═══════════════════════════════════════════════════════
-//  AIRCRAFT TRACKING
-// ═══════════════════════════════════════════════════════
-const aircraftMap = {};
-let selectedKey = null, currentMode = 'FREE', currentTab = 'exterior';
+// ── ILS Funnels & Centerlines ──
+function buildFunnel(a){
+  const [lon,lat]=a.threshold,out=(a.inboundHdg+180)%360,glide=3*DEG,steps=28;
+  const L=[],R=[];
+  for(let i=0;i<=steps;i++){
+    const t=i/steps,d=t*a.rangeNm*NM,alt=KIAD_ELEV+SURFACE_PAD+d*Math.tan(glide),hw=30+d*0.085;
+    const c=offset(lon,lat,out,d);
+    L.push(Cesium.Cartesian3.fromDegrees(...offset(c[0],c[1],(out-90+360)%360,hw),alt));
+    R.push(Cesium.Cartesian3.fromDegrees(...offset(c[0],c[1],(out+90)%360,hw),alt));
+  }
+  return [...L,...R.reverse()];
+}
+function buildCL(a){
+  const [lon,lat]=a.threshold,out=(a.inboundHdg+180)%360,glide=3*DEG,steps=20;
+  return Array.from({length:steps+1},(_,i)=>{
+    const d=(i/steps)*a.rangeNm*NM,alt=KIAD_ELEV+SURFACE_PAD+d*Math.tan(glide);
+    const p=offset(lon,lat,out,d);
+    return Cesium.Cartesian3.fromDegrees(p[0],p[1],alt);
+  });
+}
+function addILS(){
+  const fill=Cesium.Color.fromCssColorString('#00d4ff').withAlpha(0.09);
+  const edge=Cesium.Color.fromCssColorString('#00d4ff').withAlpha(0.65);
+  const fail=Cesium.Color.fromCssColorString('#00d4ff').withAlpha(0.22);
+  ILS.forEach(a=>{
+    const pos=buildFunnel(a);
+    layers.ils.push(viewer.entities.add({polygon:{hierarchy:new Cesium.PolygonHierarchy(pos),material:fill,perPositionHeight:true,outline:true,outlineColor:edge,outlineWidth:1.5}}));
+    layers.ils.push(viewer.entities.add({polyline:{positions:[...pos,pos[0]],width:1.5,material:new Cesium.ColorMaterialProperty(edge),depthFailMaterial:new Cesium.ColorMaterialProperty(fail),arcType:Cesium.ArcType.NONE}}));
+    const fp=offset(a.threshold[0],a.threshold[1],(a.inboundHdg+180)%360,a.rangeNm*NM);
+    layers.ils.push(viewer.entities.add({position:Cesium.Cartesian3.fromDegrees(fp[0],fp[1],KIAD_ELEV+a.rangeNm*NM*Math.tan(3*DEG)+300),label:{text:`ILS ${a.rwy}`,font:'10px monospace',fillColor:Cesium.Color.fromCssColorString('#00d4ff'),outlineColor:Cesium.Color.BLACK,outlineWidth:2,style:Cesium.LabelStyle.FILL_AND_OUTLINE,disableDepthTestDistance:Number.POSITIVE_INFINITY}}));
+  });
+}
+function addCenterlines(){
+  const dc=Cesium.Color.WHITE.withAlpha(0.50),df=Cesium.Color.WHITE.withAlpha(0.16);
+  ILS.forEach(a=>{
+    layers.centerlines.push(viewer.entities.add({polyline:{
+      positions:buildCL(a),width:1.5,arcType:Cesium.ArcType.GEODESIC,
+      material:new Cesium.PolylineDashMaterialProperty({color:dc,dashLength:24,dashPattern:0xFF00}),
+      depthFailMaterial:new Cesium.PolylineDashMaterialProperty({color:df,dashLength:24,dashPattern:0xFF00}),
+    }}));
+  });
+}
 
-async function fetchAircraft() {
+// ── Class B / D ──
+function addAirspace(){
+  const [cLon,cLat]=CLASS_B_CENTER;
+  CLASS_B_RINGS.forEach((ring,i)=>{
+    const fm=ring.floorFt*FT,cm=ring.ceilFt*FT;
+    layers.classb.push(mkLine(buildCircle(cLon,cLat,ring.radiusNm,cm),'#b060ff',2.5,0.90,0.30));
+    layers.classb.push(mkLine(buildCircle(cLon,cLat,ring.radiusNm,fm),'#b060ff',1.5,0.55,0.20));
+    if(i>=1) buildVerticals(cLon,cLat,ring.radiusNm,fm,cm,16).forEach(p=>layers.classb.push(mkLine(p,'#b060ff',1,0.28,0.10)));
+    const ap=offset(cLon,cLat,90,ring.radiusNm*NM+500);
+    layers.classb.push(viewer.entities.add({position:Cesium.Cartesian3.fromDegrees(ap[0],ap[1],cm+200),label:{text:`${ring.floorFt===0?'SFC':ring.floorFt+"'"} – ${ring.ceilFt}'`,font:'9px monospace',fillColor:Cesium.Color.fromCssColorString('#b060ff').withAlpha(0.9),outlineColor:Cesium.Color.BLACK,outlineWidth:2,style:Cesium.LabelStyle.FILL_AND_OUTLINE,disableDepthTestDistance:Number.POSITIVE_INFINITY}}));
+  });
+  const df=CLASS_D.floorFt*FT,dc=CLASS_D.ceilFt*FT;
+  layers.classd.push(mkLine(buildCircle(cLon,cLat,CLASS_D.radiusNm,dc),'#4488ff',3.0,0.92,0.35));
+  layers.classd.push(mkLine(buildCircle(cLon,cLat,CLASS_D.radiusNm,df),'#4488ff',1.5,0.55,0.20));
+  buildVerticals(cLon,cLat,CLASS_D.radiusNm,df,dc,24).forEach(p=>layers.classd.push(mkLine(p,'#4488ff',1,0.25,0.10)));
+  const dp=offset(cLon,cLat,270,CLASS_D.radiusNm*NM+400);
+  layers.classd.push(viewer.entities.add({position:Cesium.Cartesian3.fromDegrees(dp[0],dp[1],dc+250),label:{text:`Class D\nSFC – ${CLASS_D.ceilFt}'`,font:'9px monospace',fillColor:Cesium.Color.fromCssColorString('#4488ff').withAlpha(0.95),outlineColor:Cesium.Color.BLACK,outlineWidth:2,style:Cesium.LabelStyle.FILL_AND_OUTLINE,disableDepthTestDistance:Number.POSITIVE_INFINITY}}));
+}
+
+// ── Departure / Arrival routes ──
+function addRoutes(){
+  const rc=Cesium.Color.fromCssColorString('#88aaff').withAlpha(0.55);
+  const rf=Cesium.Color.fromCssColorString('#88aaff').withAlpha(0.18);
+  const deps=[
+    {lon:-77.4748,lat:38.9449,hdg:1,  nm:22,lbl:'DEP 01L/N'},
+    {lon:-77.4364,lat:38.9238,hdg:1,  nm:22,lbl:'DEP 01R/N'},
+    {lon:-77.4744,lat:38.9708,hdg:181,nm:22,lbl:'DEP 19R/S'},
+    {lon:-77.4360,lat:38.9553,hdg:181,nm:22,lbl:'DEP 19L/S'},
+    {lon:-77.4904,lat:38.9438,hdg:120,nm:16,lbl:'DEP 12'},
+    {lon:-77.4559,lat:38.9336,hdg:300,nm:16,lbl:'DEP 30'},
+  ];
+  deps.forEach(d=>{
+    const pts=Array.from({length:17},(_,i)=>{const t=i/16,dist=t*d.nm*NM,alt=KIAD_ELEV+dist*0.075,p=offset(d.lon,d.lat,d.hdg,dist);return Cesium.Cartesian3.fromDegrees(p[0],p[1],alt);});
+    layers.routes.push(viewer.entities.add({polyline:{positions:pts,width:1.2,arcType:Cesium.ArcType.NONE,material:new Cesium.PolylineDashMaterialProperty({color:rc,dashLength:20}),depthFailMaterial:new Cesium.PolylineDashMaterialProperty({color:rf,dashLength:20})}}));
+    const ep=offset(d.lon,d.lat,d.hdg,d.nm*NM);
+    layers.routes.push(viewer.entities.add({position:Cesium.Cartesian3.fromDegrees(ep[0],ep[1],KIAD_ELEV+d.nm*NM*0.075+200),label:{text:d.lbl,font:'8px monospace',fillColor:Cesium.Color.fromCssColorString('#88aaff').withAlpha(0.85),outlineColor:Cesium.Color.BLACK,outlineWidth:1,style:Cesium.LabelStyle.FILL_AND_OUTLINE,disableDepthTestDistance:Number.POSITIVE_INFINITY}}));
+  });
+  const arrs=[
+    {lon:-78.10,lat:38.94,hdg:90, nm:18,lbl:'FLUKY'},
+    {lon:-77.45,lat:39.35,hdg:181,nm:18,lbl:'SWANN'},
+    {lon:-77.46,lat:38.58,hdg:1,  nm:16,lbl:'PENNS'},
+    {lon:-76.90,lat:39.20,hdg:225,nm:20,lbl:'RAVNN'},
+  ];
+  arrs.forEach(a=>{
+    const pts=Array.from({length:13},(_,i)=>{const t=i/12,d=t*a.nm*NM,alt=3350-t*(3350-1000),p=offset(a.lon,a.lat,a.hdg,d);return Cesium.Cartesian3.fromDegrees(p[0],p[1],alt);});
+    layers.routes.push(viewer.entities.add({polyline:{positions:pts,width:1.5,arcType:Cesium.ArcType.NONE,material:new Cesium.ColorMaterialProperty(rc),depthFailMaterial:new Cesium.ColorMaterialProperty(rf)}}));
+    layers.routes.push(viewer.entities.add({position:Cesium.Cartesian3.fromDegrees(a.lon,a.lat,3500),label:{text:a.lbl,font:'bold 9px monospace',fillColor:Cesium.Color.fromCssColorString('#88aaff'),outlineColor:Cesium.Color.BLACK,outlineWidth:2,style:Cesium.LabelStyle.FILL_AND_OUTLINE,disableDepthTestDistance:Number.POSITIVE_INFINITY}}));
+  });
+}
+
+// ── Special Use Airspace ──
+function addSpecialUse(){
+  const SUA_ALT=8000;
+  function suaLbl(text,lon,lat){return viewer.entities.add({position:Cesium.Cartesian3.fromDegrees(lon,lat,SUA_ALT+200),label:{text,font:'8px monospace',fillColor:Cesium.Color.fromCssColorString('#ff9900'),outlineColor:Cesium.Color.BLACK,outlineWidth:2,style:Cesium.LabelStyle.FILL_AND_OUTLINE,disableDepthTestDistance:Number.POSITIVE_INFINITY,horizontalOrigin:Cesium.HorizontalOrigin.CENTER}});}
+  layers.specialuse.push(viewer.entities.add({polyline:{positions:buildCircle(DCA_POS[0],DCA_POS[1],30,SUA_ALT,120),width:1.5,material:new Cesium.PolylineDashMaterialProperty({color:Cesium.Color.fromCssColorString('#ff9900').withAlpha(0.75),dashLength:24}),arcType:Cesium.ArcType.GEODESIC}}));
+  layers.specialuse.push(suaLbl('DC SFRA  30nm',DCA_POS[0],DCA_POS[1]+0.50));
+  layers.specialuse.push(viewer.entities.add({polyline:{positions:buildCircle(DCA_POS[0],DCA_POS[1],13,SUA_ALT,90),width:2,material:new Cesium.PolylineDashMaterialProperty({color:Cesium.Color.RED.withAlpha(0.80),dashLength:18}),arcType:Cesium.ArcType.GEODESIC}}));
+  layers.specialuse.push(suaLbl('DC FRZ  13nm',DCA_POS[0],DCA_POS[1]+0.217));
+  layers.specialuse.push(viewer.entities.add({polyline:{positions:buildCircle(-77.0366,38.8977,1,SUA_ALT-1000,60),width:2,material:new Cesium.ColorMaterialProperty(Cesium.Color.RED.withAlpha(0.9))}}));
+  layers.specialuse.push(viewer.entities.add({position:Cesium.Cartesian3.fromDegrees(-77.0366,38.8977,SUA_ALT),label:{text:'P-56A',font:'8px monospace',fillColor:Cesium.Color.RED,outlineColor:Cesium.Color.BLACK,outlineWidth:2,style:Cesium.LabelStyle.FILL_AND_OUTLINE,disableDepthTestDistance:Number.POSITIVE_INFINITY}}));
+  layers.specialuse.push(viewer.entities.add({polyline:{positions:buildCircle(-77.0069,38.8888,1,SUA_ALT-1000,60),width:2,material:new Cesium.ColorMaterialProperty(Cesium.Color.RED.withAlpha(0.9))}}));
+  layers.specialuse.push(viewer.entities.add({position:Cesium.Cartesian3.fromDegrees(-77.0069,38.8888,SUA_ALT),label:{text:'P-56B',font:'8px monospace',fillColor:Cesium.Color.RED,outlineColor:Cesium.Color.BLACK,outlineWidth:2,style:Cesium.LabelStyle.FILL_AND_OUTLINE,disableDepthTestDistance:Number.POSITIVE_INFINITY}}));
+  layers.specialuse.push(viewer.entities.add({polyline:{positions:buildCircle(-77.3053,38.5017,8,SUA_ALT-2500,90),width:1.5,material:new Cesium.PolylineDashMaterialProperty({color:Cesium.Color.fromCssColorString('#ff4444').withAlpha(0.65),dashLength:16}),arcType:Cesium.ArcType.GEODESIC}}));
+  layers.specialuse.push(viewer.entities.add({position:Cesium.Cartesian3.fromDegrees(-77.3053,38.5017,SUA_ALT),label:{text:'R-4001\nQUANTICO',font:'8px monospace',fillColor:Cesium.Color.fromCssColorString('#ff4444'),outlineColor:Cesium.Color.BLACK,outlineWidth:2,style:Cesium.LabelStyle.FILL_AND_OUTLINE,disableDepthTestDistance:Number.POSITIVE_INFINITY,horizontalOrigin:Cesium.HorizontalOrigin.CENTER}}));
+}
+
+// ── Lat/Lon Grid ──
+function addGrid(){
+  const ALT=9000;
+  const mat=new Cesium.ColorMaterialProperty(Cesium.Color.fromCssColorString('#334488').withAlpha(0.35));
+  for(let lat=38.5;lat<=39.51;lat+=0.1){const pts=[];for(let lon=-78.3;lon<=-76.3;lon+=0.05)pts.push(Cesium.Cartesian3.fromDegrees(lon,+lat.toFixed(2),ALT));layers.grid.push(viewer.entities.add({polyline:{positions:pts,width:0.5,material:mat,arcType:Cesium.ArcType.GEODESIC}}));}
+  for(let lon=-78.3;lon<=-76.29;lon+=0.1){const pts=[];for(let lat=38.5;lat<=39.5;lat+=0.05)pts.push(Cesium.Cartesian3.fromDegrees(+lon.toFixed(2),lat,ALT));layers.grid.push(viewer.entities.add({polyline:{positions:pts,width:0.5,material:mat,arcType:Cesium.ArcType.GEODESIC}}));}
+  const lc=Cesium.Color.fromCssColorString('#5577aa').withAlpha(0.55);
+  for(let lat=38.6;lat<=39.4;lat+=0.3)for(let lon=-78.1;lon<=-76.4;lon+=0.3)layers.grid.push(viewer.entities.add({position:Cesium.Cartesian3.fromDegrees(+lon.toFixed(2),+lat.toFixed(2),ALT+50),label:{text:`${lat.toFixed(1)}N\n${Math.abs(lon).toFixed(1)}W`,font:'7px monospace',fillColor:lc,style:Cesium.LabelStyle.FILL,disableDepthTestDistance:Number.POSITIVE_INFINITY,horizontalOrigin:Cesium.HorizontalOrigin.LEFT,pixelOffset:new Cesium.Cartesian2(2,2)}}));
+}
+
+// ── Inference Zones ──
+const INFERENCE_DEFS=[
+  {id:'arr_north',label:'ARRIVAL STREAM\nRWY 19s (N)',labelPos:[-77.42,39.20,4200],color:'#00aaff',baseAlpha:0.04,activeAlpha:0.22,altM:4000,coords:[[-77.68,39.05],[-77.22,39.05],[-77.18,39.48],[-77.72,39.48]],score(acs){return acs.filter(a=>a.lat>39.05&&a.lat<39.48&&a.lon>-77.72&&a.lon<-77.18&&a.vspeed<-200&&!isVFR(a.squawk)).length;}},
+  {id:'arr_south',label:'ARRIVAL STREAM\nRWY 01s (S)',labelPos:[-77.35,38.68,4200],color:'#00aaff',baseAlpha:0.04,activeAlpha:0.22,altM:4000,coords:[[-77.68,38.52],[-77.05,38.52],[-77.08,38.95],[-77.62,38.95]],score(acs){return acs.filter(a=>a.lat>38.52&&a.lat<38.95&&a.lon>-77.68&&a.lon<-77.05&&a.vspeed<-200&&!isVFR(a.squawk)).length;}},
+  {id:'dep_climb',label:'DEPARTURE\nCLIMB CORRIDOR',labelPos:[-77.46,39.30,5200],color:'#ffcc00',baseAlpha:0.03,activeAlpha:0.18,altM:5000,coords:[[-77.54,38.97],[-77.38,38.97],[-77.32,39.55],[-77.60,39.55]],score(acs){return acs.filter(a=>a.lat>38.97&&a.lat<39.55&&a.lon>-77.60&&a.lon<-77.32&&a.vspeed>500).length;}},
+  {id:'vfr_west',label:'VFR LIKELY\nW. VIRGINIA',labelPos:[-77.96,39.02,1700],color:'#00ccff',baseAlpha:0.03,activeAlpha:0.16,altM:1500,coords:[[-78.22,38.72],[-77.72,38.72],[-77.72,39.32],[-78.22,39.32]],score(acs){return acs.filter(a=>a.lat>38.72&&a.lat<39.32&&a.lon>-78.22&&a.lon<-77.72&&isVFR(a.squawk)).length;}},
+  {id:'vfr_east',label:'VFR LIKELY\nE. CORRIDOR',labelPos:[-76.80,38.96,1700],color:'#00ccff',baseAlpha:0.03,activeAlpha:0.16,altM:1500,coords:[[-77.20,38.78],[-76.50,38.78],[-76.50,39.12],[-77.20,39.12]],score(acs){return acs.filter(a=>a.lat>38.78&&a.lat<39.12&&a.lon>-77.20&&a.lon<-76.50&&isVFR(a.squawk)).length;}},
+];
+const inferenceEnt={};
+function addInferenceZones(){
+  INFERENCE_DEFS.forEach(def=>{
+    const positions=def.coords.map(([lon,lat])=>Cesium.Cartesian3.fromDegrees(lon,lat,def.altM));
+    const col=Cesium.Color.fromCssColorString(def.color);
+    const poly=viewer.entities.add({polygon:{hierarchy:new Cesium.PolygonHierarchy(positions),material:col.withAlpha(def.baseAlpha),height:def.altM,perPositionHeight:false,outline:true,outlineColor:col.withAlpha(0.35)}});
+    const lbl=viewer.entities.add({position:Cesium.Cartesian3.fromDegrees(...def.labelPos),label:{text:def.label,font:'8px monospace',fillColor:col.withAlpha(0.55),outlineColor:Cesium.Color.BLACK,outlineWidth:2,style:Cesium.LabelStyle.FILL_AND_OUTLINE,horizontalOrigin:Cesium.HorizontalOrigin.CENTER,disableDepthTestDistance:Number.POSITIVE_INFINITY}});
+    inferenceEnt[def.id]={poly,lbl,def};
+    layers.inference.push(poly,lbl);
+  });
+}
+function updateInferenceOpacity(){
+  const acs=Object.values(aircraftMap);
+  INFERENCE_DEFS.forEach(def=>{
+    const e=inferenceEnt[def.id]; if(!e) return;
+    const n=Math.min(def.score(acs),5);
+    const alpha=def.baseAlpha+(def.activeAlpha-def.baseAlpha)*(n/5);
+    const col=Cesium.Color.fromCssColorString(def.color);
+    e.poly.polygon.material=col.withAlpha(alpha);
+    e.poly.polygon.outlineColor=col.withAlpha(0.35+alpha*0.5);
+  });
+}
+
+// ═══════════════════════════════════════════════
+//  AIRCRAFT STATE
+// ═══════════════════════════════════════════════
+const aircraftMap={};
+let selectedKey=null, atcPos='RADAR', camMode='FREE';
+
+// Conflict coloring via model silhouette
+function setModelState(a,state){
+  const base=Cesium.Color.fromCssColorString(acColor(a.ac_type,a.squawk));
+  const c = state==='CONFLICT'?Cesium.Color.RED
+          : state==='WAKE'    ?Cesium.Color.ORANGE
+          : state==='ADVISORY'?Cesium.Color.YELLOW
+          : base;
+  a.model.model.silhouetteColor=c;
+  a.model.model.silhouetteSize = state==='CONFLICT'?4:state==='WAKE'?3:state==='ADVISORY'?2:1.5;
+  a.model.label.fillColor=c;
+}
+
+// ═══════════════════════════════════════════════
+//  CONFLICT DETECTION
+// ═══════════════════════════════════════════════
+const conflictLines=[];
+function checkConflicts(){
+  conflictLines.forEach(e=>viewer.entities.remove(e));
+  conflictLines.length=0;
+  Object.values(aircraftMap).forEach(a=>setModelState(a,'NORMAL'));
+
+  if(atcPos==='GND'){document.getElementById('conflict-banner').style.display='none';return;}
+
+  const isTWR=atcPos==='TOWER';
+  const entries=Object.values(aircraftMap).filter(a=>a.model.show!==false&&(isTWR?a.alt<10000:a.alt>=1000));
+  const priority={NORMAL:0,ADVISORY:1,WAKE:2,CONFLICT:3};
+  const state={};
+  entries.forEach(a=>{state[a.cs]='NORMAL';});
+  const up=(cs,s)=>{if((priority[s]||0)>(priority[state[cs]]||0))state[cs]=s;};
+
+  let cPairs=0,wPairs=0;
+  for(let i=0;i<entries.length;i++)for(let j=i+1;j<entries.length;j++){
+    const a=entries[i],b=entries[j];
+    const dH=distNm(a.lon,a.lat,b.lon,b.lat),dV=Math.abs(a.alt-b.alt);
+    if(!isTWR&&dH<3&&dV<1000){up(a.cs,'CONFLICT');up(b.cs,'CONFLICT');cPairs++;
+      conflictLines.push(viewer.entities.add({polyline:{positions:[Cesium.Cartesian3.fromDegrees(a.lon,a.lat,a.altM),Cesium.Cartesian3.fromDegrees(b.lon,b.lat,b.altM)],width:2,material:new Cesium.PolylineDashMaterialProperty({color:Cesium.Color.RED.withAlpha(0.9),dashLength:14}),arcType:Cesium.ArcType.NONE}}));}
+    if(isTWR&&dH<2&&dV<500&&a.alt<3000&&b.alt<3000){up(a.cs,'CONFLICT');up(b.cs,'CONFLICT');cPairs++;}
+    if(dV<2000&&dH<6){
+      const ca=wakeCat(a.ac_type),cb=wakeCat(b.ac_type);
+      const wt=(l,t)=>l==='S'||l==='H'?t==='H'?4:5:l==='B757'?4:0;
+      const mAB=wt(ca,cb),mBA=wt(cb,ca);
+      if(mAB>0&&dH<mAB){up(a.cs,'WAKE');up(b.cs,'WAKE');wPairs++;}
+      if(mBA>0&&dH<mBA){up(a.cs,'WAKE');up(b.cs,'WAKE');wPairs++;}
+    }
+    if(dH<5&&dV<1000&&!isTWR)up(a.cs,'ADVISORY');
+  }
+  entries.forEach(a=>setModelState(a,state[a.cs]||'NORMAL'));
+  const banner=document.getElementById('conflict-banner');
+  if(cPairs>0){banner.textContent=isTWR?'⚠ RUNWAY CONFLICT — VERIFY SEPARATION':`⚠ SEPARATION LOSS — ${cPairs} PAIR(S)`;banner.style.background='rgba(200,0,0,0.9)';banner.style.display='block';}
+  else if(wPairs>0){banner.textContent='⚠ WAKE TURBULENCE — VERIFY IN-TRAIL SEPARATION';banner.style.background='rgba(200,100,0,0.9)';banner.style.display='block';}
+  else banner.style.display='none';
+}
+
+// ═══════════════════════════════════════════════
+//  ON-FINALS
+// ═══════════════════════════════════════════════
+function findFinals(){
+  const finals=[],seen=new Set();
+  ILS.forEach(ils=>{
+    Object.values(aircraftMap).forEach(a=>{
+      if(seen.has(a.cs)) return;
+      const d=distNm(ils.threshold[0],ils.threshold[1],a.lon,a.lat);
+      if(d>ils.rangeNm) return;
+      if(Math.abs(((a.heading-ils.inboundHdg)+180)%360-180)>30) return;
+      const gsAlt=(KIAD_ELEV+d*NM*Math.tan(3*DEG))/FT;
+      if(a.alt>gsAlt+1500||a.alt<200) return;
+      seen.add(a.cs);
+      finals.push({...a,rwy:ils.rwy,distFinal:d});
+    });
+  });
+  return finals.sort((a,b)=>a.distFinal-b.distFinal);
+}
+function updateFinalsPanel(){
+  const panel=document.getElementById('finals-panel');
+  if(atcPos==='GND'){panel.style.display='none';return;}
+  const finals=findFinals();
+  if(!finals.length){panel.style.display='none';return;}
+  const rows=finals.map((a,i)=>{
+    const helo=isHelo(a.ac_type),vfr=isVFR(a.squawk);
+    const tag=helo?'<span class="final-tag tag-helo">HELO</span>':vfr?'<span class="final-tag tag-vfr">VFR</span>':'<span class="final-tag tag-ifr">IFR</span>';
+    const fl=String(Math.round(a.alt/100)).padStart(3,'0');
+    const tte=a.speed>30?(a.distFinal/a.speed*60).toFixed(1)+'m':'—';
+    return `<div class="final-row"><span class="final-seq">#${i+1}</span><span class="final-rwy">${a.rwy}</span><span class="final-call">${a.cs}</span><span class="final-dist">${a.distFinal.toFixed(1)}nm</span><span class="final-alt">FL${fl}</span><span class="final-tte">${tte}</span>${tag}</div>`;
+  }).join('');
+  panel.innerHTML=`<h4>On Final</h4>${rows}`;
+  panel.style.display='block';
+}
+
+// ═══════════════════════════════════════════════
+//  DATA TAG
+// ═══════════════════════════════════════════════
+function dataTag(a){
+  const fl=String(Math.round((a.alt||0)/100)).padStart(3,'0');
+  const sp=String(Math.round(a.speed||0)).padStart(3,' ');
+  if(atcPos==='RADAR') return `${a.cs}\n${fl} ${sp}`;
+  if(atcPos==='TOWER') return `${a.cs}\n${fl}`;
+  return a.cs;
+}
+
+// ═══════════════════════════════════════════════
+//  FETCH AIRCRAFT
+// ═══════════════════════════════════════════════
+async function fetchAircraft(){
   try {
-    const res  = await fetch('/api/aircraft');
-    const data = await res.json();
-    const now  = Cesium.JulianDate.now();
-    const seen = new Set();
+    const res=await fetch('/api/aircraft');
+    const data=await res.json();
+    const now=Cesium.JulianDate.now();
+    const seen=new Set();
 
-    for (const [key, ac] of Object.entries(data)) {
-      if (!Array.isArray(ac)) continue;
-      const [icao, lat, lon, heading, alt_ft, speed, squawk,
-             , ac_type, , , origin, dest, , , vspeed, callsign] = ac;
-      if (!lat || !lon) continue;
-      if (!isKIADTraffic(lat, lon, origin, dest)) continue;
+    for(const [key,ac] of Object.entries(data)){
+      if(!Array.isArray(ac)) continue;
+      const [icao,lat,lon,heading,alt_ft,speed,squawk,,ac_type,,,origin,dest,,,vspeed,callsign]=ac;
+      if(!lat||!lon) continue;
+      if(!isKIAD(lat,lon,origin,dest)) continue;
+      if(!alt_ft||alt_ft<200) continue; // skip ground traffic for now
 
-      const cs    = (callsign || icao || '????').trim().toUpperCase();
-      const altM  = (alt_ft || 0) * 0.3048;
-      const helo  = isHelo(ac_type);
-      const color = acColor(ac_type, squawk);
-      const cc    = Cesium.Color.fromCssColorString(color);
+      const cs=(callsign||icao||'????').trim().toUpperCase();
+      const altM=(alt_ft||0)*FT;
+      const helo=isHelo(ac_type);
+      const color=acColor(ac_type,squawk);
+      const cc=Cesium.Color.fromCssColorString(color);
       seen.add(key);
 
-      if (!aircraftMap[key]) {
-        // ── Position property ──
-        const pp = new Cesium.SampledPositionProperty();
-        pp.backwardExtrapolationType = Cesium.ExtrapolationType.HOLD;
-        pp.forwardExtrapolationType  = Cesium.ExtrapolationType.HOLD;
-        pp.addSample(now, Cesium.Cartesian3.fromDegrees(lon, lat, altM));
+      if(!aircraftMap[key]){
+        const pp=new Cesium.SampledPositionProperty();
+        pp.backwardExtrapolationType=Cesium.ExtrapolationType.HOLD;
+        pp.forwardExtrapolationType=Cesium.ExtrapolationType.HOLD;
+        pp.addSample(now,Cesium.Cartesian3.fromDegrees(lon,lat,altM));
 
-        // ── Orientation: heading from FR24, updated each cycle via CallbackProperty ──
-        const orientProp = new Cesium.CallbackProperty(() => {
-          const a = aircraftMap[key];
-          if (!a) return Cesium.Quaternion.IDENTITY;
-          const pos = Cesium.Cartesian3.fromDegrees(a.lon, a.lat, a.altM);
-          const hpr = new Cesium.HeadingPitchRoll(
-            Cesium.Math.toRadians(a.heading),
-            0, 0
-          );
-          return Cesium.Transforms.headingPitchRollQuaternion(pos, hpr);
-        }, false);
+        // Heading-locked orientation
+        const orientProp=new Cesium.CallbackProperty(()=>{
+          const a=aircraftMap[key];if(!a) return Cesium.Quaternion.IDENTITY;
+          return Cesium.Transforms.headingPitchRollQuaternion(
+            Cesium.Cartesian3.fromDegrees(a.lon,a.lat,a.altM),
+            new Cesium.HeadingPitchRoll(Cesium.Math.toRadians(a.heading),0,0));
+        },false);
 
-        // ── 3D model entity (replaces dot) ──
-        const model = viewer.entities.add({
-          position: pp,
-          orientation: orientProp,
-          model: {
-            uri: glbUrl(ac_type, helo),
-            minimumPixelSize: helo ? 20 : 26,
-            maximumScale: 200000,
-            // Silhouette glow = classification color; brighter when selected
-            silhouetteColor: cc,
-            silhouetteSize: 1.5,
-            // Subtle tint so IFR green / VFR cyan / helo colors are visible
-            colorBlendMode: Cesium.ColorBlendMode.HIGHLIGHT,
-            colorBlendAmount: 0.0,
-            color: cc,
+        const model=viewer.entities.add({
+          position:pp,
+          orientation:orientProp,
+          model:{
+            uri:glbUrl(ac_type,helo),
+            minimumPixelSize:helo?20:26,
+            maximumScale:200000,
+            silhouetteColor:cc,
+            silhouetteSize:1.5,
           },
-          label: {
-            text: cs,
-            font: '11px monospace',
-            fillColor: cc,
-            outlineColor: Cesium.Color.BLACK,
-            outlineWidth: 2,
-            style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-            verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
-            pixelOffset: new Cesium.Cartesian2(0, -18),
-            disableDepthTestDistance: Number.POSITIVE_INFINITY,
-            distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 120000),
+          label:{
+            text:dataTag({cs,alt:Math.round(alt_ft||0),speed:speed||0}),
+            font:'10px monospace',fillColor:cc,
+            outlineColor:Cesium.Color.BLACK,outlineWidth:2,
+            style:Cesium.LabelStyle.FILL_AND_OUTLINE,
+            verticalOrigin:Cesium.VerticalOrigin.BOTTOM,
+            pixelOffset:new Cesium.Cartesian2(0,-20),
+            disableDepthTestDistance:Number.POSITIVE_INFINITY,
+            distanceDisplayCondition:new Cesium.DistanceDisplayCondition(0,160000),
           },
-          viewFrom: new Cesium.ConstantProperty(new Cesium.Cartesian3(-600, 0, 180)),
+          viewFrom:new Cesium.ConstantProperty(new Cesium.Cartesian3(-600,0,180)),
         });
 
-        // ── Ghost trail ──
-        const trail = viewer.entities.add({
-          polyline: {
-            positions: [Cesium.Cartesian3.fromDegrees(lon, lat, altM)],
-            width: 1.5,
-            material: new Cesium.ColorMaterialProperty(cc.withAlpha(0.35)),
-            arcType: Cesium.ArcType.NONE,
-            depthFailMaterial: new Cesium.ColorMaterialProperty(cc.withAlpha(0.12)),
-          },
-        });
+        const trail=viewer.entities.add({polyline:{
+          positions:[Cesium.Cartesian3.fromDegrees(lon,lat,altM)],
+          width:1.5,arcType:Cesium.ArcType.NONE,
+          material:new Cesium.ColorMaterialProperty(cc.withAlpha(0.35)),
+          depthFailMaterial:new Cesium.ColorMaterialProperty(cc.withAlpha(0.12)),
+        }});
 
-        aircraftMap[key] = {
-          model, trail, pp,
-          history: [{ lon, lat, altM }],
-          cs, ac_type: ac_type || '—', color, helo,
-          squawk: squawk || null,
-          alt: Math.round(alt_ft || 0), speed: speed || 0,
-          heading: heading || 0, vspeed: vspeed || 0,
-          origin: origin || '—', dest: dest || '—',
-          lon, lat, altM,
+        aircraftMap[key]={
+          model,trail,pp,
+          history:[{lon,lat,altM}],
+          cs,ac_type:ac_type||'—',color,helo,squawk:squawk||null,
+          alt:Math.round(alt_ft||0),speed:speed||0,
+          heading:heading||0,vspeed:vspeed||0,
+          origin:origin||'—',dest:dest||'—',
+          lon,lat,altM,
         };
-
       } else {
-        // ── Update existing ──
-        const e = aircraftMap[key];
-        e.pp.addSample(now, Cesium.Cartesian3.fromDegrees(lon, lat, altM));
-        e.history.unshift({ lon, lat, altM });
-        if (e.history.length > 14) e.history.length = 14;
-        if (e.history.length >= 2)
-          e.trail.polyline.positions =
-            e.history.map(p => Cesium.Cartesian3.fromDegrees(p.lon, p.lat, p.altM));
-        Object.assign(e, {
-          cs, ac_type: ac_type || '—',
-          alt: Math.round(alt_ft || 0), speed: speed || 0,
-          heading: heading || 0, vspeed: vspeed || 0,
-          origin: origin || '—', dest: dest || '—',
-          lon, lat, altM,
-        });
-        // Keep label text fresh
-        e.model.label.text = cs;
+        const e=aircraftMap[key];
+        e.pp.addSample(now,Cesium.Cartesian3.fromDegrees(lon,lat,altM));
+        e.history.unshift({lon,lat,altM});
+        if(e.history.length>14) e.history.length=14;
+        if(e.history.length>=2)
+          e.trail.polyline.positions=e.history.map(p=>Cesium.Cartesian3.fromDegrees(p.lon,p.lat,p.altM));
+        Object.assign(e,{cs,ac_type:ac_type||'—',alt:Math.round(alt_ft||0),speed:speed||0,heading:heading||0,vspeed:vspeed||0,origin:origin||'—',dest:dest||'—',lon,lat,altM});
+        e.model.label.text=dataTag(e);
       }
     }
 
     // Remove gone aircraft
-    for (const k of Object.keys(aircraftMap)) {
-      if (!seen.has(k)) {
+    for(const k of Object.keys(aircraftMap)){
+      if(!seen.has(k)){
         viewer.entities.remove(aircraftMap[k].model);
         viewer.entities.remove(aircraftMap[k].trail);
-        if (k === selectedKey) deselectAircraft();
+        if(k===selectedKey) deselectAC();
         delete aircraftMap[k];
       }
     }
 
     refreshList();
-    if (selectedKey && aircraftMap[selectedKey]) refreshCard();
-  } catch(e) { console.warn('fetch:', e); }
+    if(selectedKey&&aircraftMap[selectedKey]) refreshCard();
+    checkConflicts();
+    updateFinalsPanel();
+    updateInferenceOpacity();
+    document.getElementById('ac-count').textContent=`${Object.keys(aircraftMap).length} aircraft`;
+  } catch(e){console.warn('fetch:',e);}
 }
 
-// ═══════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════
 //  TRAFFIC LIST
-// ═══════════════════════════════════════════════════════
-function refreshList() {
-  const entries = Object.entries(aircraftMap);
-  document.getElementById('ac-count').textContent      = `${entries.length} aircraft`;
-  document.getElementById('traffic-count').textContent = entries.length;
-
-  entries.sort(([ka],[kb]) => {
-    if (ka === selectedKey) return -1;
-    if (kb === selectedKey) return  1;
-    return aircraftMap[ka].cs.localeCompare(aircraftMap[kb].cs);
-  });
-
-  const ul = document.getElementById('traffic-list');
-  ul.innerHTML = '';
-  for (const [k,a] of entries) {
-    const fl = String(Math.round(a.alt / 100)).padStart(3,'0');
-    const li = document.createElement('li');
-    li.className = 'tr-row' + (k === selectedKey ? ' sel' : '');
-    li.innerHTML = `
-      <span class="tr-dot" style="background:${a.color}"></span>
-      <span class="tr-cs">${a.cs}</span>
-      <span class="tr-ty">${a.ac_type}</span>
-      <span class="tr-fl">FL${fl}</span>
-      <span class="tr-spd">${Math.round(a.speed)}kt</span>`;
-    li.onclick = () => selectAircraft(k);
+// ═══════════════════════════════════════════════
+function refreshList(){
+  const entries=Object.entries(aircraftMap);
+  document.getElementById('traffic-count').textContent=entries.length;
+  entries.sort(([ka],[kb])=>{if(ka===selectedKey)return -1;if(kb===selectedKey)return 1;return aircraftMap[ka].cs.localeCompare(aircraftMap[kb].cs);});
+  const ul=document.getElementById('traffic-list');
+  ul.innerHTML='';
+  for(const [k,a] of entries){
+    const fl=String(Math.round(a.alt/100)).padStart(3,'0');
+    const li=document.createElement('li');
+    li.className='tr-row'+(k===selectedKey?' sel':'');
+    li.innerHTML=`<span class="tr-dot" style="background:${a.color}"></span><span class="tr-cs">${a.cs}</span><span class="tr-ty">${a.ac_type}</span><span class="tr-fl">FL${fl}</span><span class="tr-spd">${Math.round(a.speed)}kt</span>`;
+    li.onclick=()=>selectAC(k);
     ul.appendChild(li);
   }
 }
 
-// ═══════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════
 //  DETAIL PANEL
-// ═══════════════════════════════════════════════════════
-function refreshCard() {
-  const a = aircraftMap[selectedKey];
-  if (!a) return;
-  const fl = String(Math.round(a.alt / 100)).padStart(3,'0');
-  const vs = a.vspeed > 50 ? `+${a.vspeed}` : a.vspeed < -50 ? `${a.vspeed}` : '—';
-  document.getElementById('dp-callsign').textContent = a.cs;
-  document.getElementById('dp-route').textContent    =
-    (a.origin !== '—' && a.dest !== '—') ? `${a.origin} → ${a.dest}` : a.ac_type;
-  document.getElementById('dp-type').textContent  = a.ac_type;
-  document.getElementById('dp-fl').textContent    = `FL${fl}  (${a.alt} ft)`;
-  document.getElementById('dp-spd').textContent   = `${Math.round(a.speed)} kt`;
-  document.getElementById('dp-hdg').textContent   = `${Math.round(a.heading)}°`;
-  document.getElementById('dp-vs').textContent    = vs !== '—' ? `${vs} fpm` : '—';
-  document.getElementById('dp-sq').textContent    = a.squawk || '—';
-  document.getElementById('dp-from').textContent  = a.origin;
-  document.getElementById('dp-to').textContent    = a.dest;
+// ═══════════════════════════════════════════════
+let currentTab='exterior';
+function refreshCard(){
+  const a=aircraftMap[selectedKey];if(!a) return;
+  const fl=String(Math.round(a.alt/100)).padStart(3,'0');
+  const vs=a.vspeed>50?`+${a.vspeed}`:a.vspeed<-50?`${a.vspeed}`:'—';
+  document.getElementById('dp-cs').textContent=a.cs;
+  document.getElementById('dp-route').textContent=(a.origin!=='—'&&a.dest!=='—')?`${a.origin} → ${a.dest}`:a.ac_type;
+  document.getElementById('dp-type').textContent=a.ac_type;
+  document.getElementById('dp-fl').textContent=`FL${fl}  (${a.alt} ft)`;
+  document.getElementById('dp-spd').textContent=`${Math.round(a.speed)} kt`;
+  document.getElementById('dp-hdg').textContent=`${Math.round(a.heading)}°`;
+  document.getElementById('dp-vs').textContent=vs!=='—'?`${vs} fpm`:'—';
+  document.getElementById('dp-sq').textContent=a.squawk||'—';
+  document.getElementById('dp-from').textContent=a.origin;
+  document.getElementById('dp-to').textContent=a.dest;
 }
-
-function loadPanel(key) {
-  const a = aircraftMap[key];
-  if (!a) return;
-  const iframe      = document.getElementById('dp-iframe');
-  const placeholder = document.getElementById('dp-placeholder');
-  const loading     = document.getElementById('dp-loading');
-
-  placeholder.style.display = 'none';
-  iframe.style.display      = 'none';
-  loading.classList.remove('hidden');
-  iframe.onload = () => { loading.classList.add('hidden'); iframe.style.display = 'block'; };
-  iframe.src    = sfEmbed(a.ac_type, currentTab);
+function loadPanel(key){
+  const a=aircraftMap[key];if(!a) return;
+  const iframe=document.getElementById('dp-iframe');
+  document.getElementById('dp-placeholder').style.display='none';
+  iframe.style.display='none';
+  document.getElementById('dp-loading').classList.remove('hidden');
+  iframe.onload=()=>{document.getElementById('dp-loading').classList.add('hidden');iframe.style.display='block';};
+  iframe.src=sfEmbed(a.ac_type,currentTab);
 }
-
-function selectAircraft(key) {
-  // Dim previous selection
-  if (selectedKey && aircraftMap[selectedKey]) {
-    aircraftMap[selectedKey].model.model.silhouetteSize = 1.5;
-  }
-
-  selectedKey = key;
-  const a = aircraftMap[key];
-  if (!a) return;
-
-  // Brighten selected model silhouette
-  a.model.model.silhouetteSize = 4;
-
-  refreshCard();
-  loadPanel(key);
+function selectAC(key){
+  if(selectedKey&&aircraftMap[selectedKey]) aircraftMap[selectedKey].model.model.silhouetteSize=1.5;
+  selectedKey=key;
+  const a=aircraftMap[key];if(!a) return;
+  a.model.model.silhouetteSize=5;
+  refreshCard(); loadPanel(key);
   document.getElementById('detail-panel').classList.add('open');
-
-  if (currentMode === 'FOLLOW') {
-    viewer.trackedEntity = a.model;
-  } else {
-    viewer.camera.flyTo({
-      destination: Cesium.Cartesian3.fromDegrees(a.lon, a.lat, a.altM + 3500),
-      orientation: { heading: 0, pitch: Cesium.Math.toRadians(-52), roll: 0 },
-      duration: 1.5,
-    });
-  }
+  if(camMode==='FOLLOW') viewer.trackedEntity=a.model;
+  else viewer.camera.flyTo({destination:Cesium.Cartesian3.fromDegrees(a.lon,a.lat,a.altM+4000),orientation:{heading:0,pitch:Cesium.Math.toRadians(-50),roll:0},duration:1.5});
   refreshList();
 }
-
-function deselectAircraft() {
-  if (selectedKey && aircraftMap[selectedKey]) {
-    aircraftMap[selectedKey].model.model.silhouetteSize = 1.5;
-  }
-  selectedKey = null;
-  viewer.trackedEntity = undefined;
+function deselectAC(){
+  if(selectedKey&&aircraftMap[selectedKey]) aircraftMap[selectedKey].model.model.silhouetteSize=1.5;
+  selectedKey=null; viewer.trackedEntity=undefined;
   document.getElementById('detail-panel').classList.remove('open');
-  const iframe = document.getElementById('dp-iframe');
-  iframe.src = ''; iframe.style.display = 'none';
-  document.getElementById('dp-placeholder').style.display = 'flex';
+  const iframe=document.getElementById('dp-iframe');
+  iframe.src='';iframe.style.display='none';
+  document.getElementById('dp-placeholder').style.display='flex';
   document.getElementById('dp-loading').classList.add('hidden');
   refreshList();
 }
-
-// ═══════════════════════════════════════════════════════
-//  TABS
-// ═══════════════════════════════════════════════════════
-function setTab(tab) {
-  currentTab = tab;
-  document.querySelectorAll('.dp-tab').forEach(t => t.classList.remove('active'));
-  document.getElementById('tab-' + tab).classList.add('active');
-  if (selectedKey) loadPanel(selectedKey);
+function setTab(tab){
+  currentTab=tab;
+  document.querySelectorAll('.dp-tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById('tab-'+tab).classList.add('active');
+  if(selectedKey) loadPanel(selectedKey);
 }
 
-// ═══════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════
+//  ATC POSITION
+// ═══════════════════════════════════════════════
+const ATC_CFG={
+  GND:{camera:()=>viewer.camera.flyTo({destination:Cesium.Cartesian3.fromDegrees(-77.4558,38.9445,1600),orientation:{heading:Cesium.Math.toRadians(15),pitch:Cesium.Math.toRadians(-87),roll:0},duration:2})},
+  TOWER:{camera:()=>viewer.camera.flyTo({destination:Cesium.Cartesian3.fromDegrees(-77.4558,38.905,2400),orientation:{heading:Cesium.Math.toRadians(2),pitch:Cesium.Math.toRadians(-50),roll:0},duration:2})},
+  RADAR:{camera:()=>viewer.camera.flyTo({destination:Cesium.Cartesian3.fromDegrees(-77.4558,38.9445,75000),orientation:{heading:0,pitch:Cesium.Math.toRadians(-89),roll:0},duration:2})},
+};
+const LAYER_CFG={
+  GND:   {runways:true,centerlines:false,ils:false,classb:false,classd:false,routes:false,specialuse:false,inference:false,grid:false},
+  TOWER: {runways:true,centerlines:true, ils:true, classb:false,classd:true, routes:false,specialuse:false,inference:false,grid:false},
+  RADAR: {runways:true,centerlines:true, ils:true, classb:true, classd:true, routes:true, specialuse:true, inference:true, grid:false},
+};
+function setATCPos(pos){
+  atcPos=pos;
+  document.querySelectorAll('[data-pos]').forEach(b=>b.classList.toggle('active',b.dataset.pos===pos));
+  ATC_CFG[pos].camera();
+  const cfg=LAYER_CFG[pos];
+  Object.entries(cfg).forEach(([layer,show])=>{
+    visible[layer]=show;
+    layers[layer]?.forEach(e=>{e.show=show;});
+    const row=document.querySelector(`.leg-row[data-layer="${layer}"]`);
+    if(row) row.classList.toggle('off',!show);
+  });
+  checkConflicts(); updateFinalsPanel();
+  toast(`Position: ${pos}`);
+}
+
+// ═══════════════════════════════════════════════
 //  CAMERA MODES
-// ═══════════════════════════════════════════════════════
-function setMode(mode) {
-  currentMode = mode;
-  document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
-  document.getElementById('btn-' + mode).classList.add('active');
-  viewer.trackedEntity = undefined;
-
-  if (mode === 'FREE') {
-    viewer.camera.flyTo({
-      destination: Cesium.Cartesian3.fromDegrees(-77.4565, 38.9531, 9000),
-      orientation: { heading: Cesium.Math.toRadians(345), pitch: Cesium.Math.toRadians(-42), roll: 0 },
-      duration: 1.5,
-    });
-    toast('Free camera');
-  } else if (mode === 'TOWER') {
-    viewer.camera.flyTo({
-      destination: Cesium.Cartesian3.fromDegrees(-77.4563, 38.9507, 175),
-      orientation: { heading: Cesium.Math.toRadians(130), pitch: Cesium.Math.toRadians(-6), roll: 0 },
-      duration: 2.5,
-    });
-    toast('Tower view — KIAD Control Tower');
-  } else if (mode === 'FOLLOW') {
-    if (selectedKey && aircraftMap[selectedKey]) {
-      viewer.trackedEntity = aircraftMap[selectedKey].model;
-      toast(`Following ${aircraftMap[selectedKey].cs}`);
-    } else {
-      toast('Select an aircraft first');
-    }
+// ═══════════════════════════════════════════════
+function setCam(mode){
+  camMode=mode;
+  document.querySelectorAll('[id^=cam-]').forEach(b=>b.classList.remove('active'));
+  document.getElementById('cam-'+mode).classList.add('active');
+  viewer.trackedEntity=undefined;
+  if(mode==='FREE') toast('Free camera');
+  else if(mode==='TOWER'){
+    viewer.camera.flyTo({destination:Cesium.Cartesian3.fromDegrees(-77.4563,38.9507,175),orientation:{heading:Cesium.Math.toRadians(130),pitch:Cesium.Math.toRadians(-6),roll:0},duration:2.5});
+    toast('Tower cab view');
+  } else if(mode==='FOLLOW'){
+    if(selectedKey&&aircraftMap[selectedKey]){viewer.trackedEntity=aircraftMap[selectedKey].model;toast(`Following ${aircraftMap[selectedKey].cs}`);}
+    else toast('Select an aircraft first');
   }
 }
 
-// ═══════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════
 //  CLICK HANDLER
-// ═══════════════════════════════════════════════════════
-const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
-handler.setInputAction(click => {
-  const picked = viewer.scene.pick(click.position);
-  if (Cesium.defined(picked) && Cesium.defined(picked.id)) {
-    for (const [k, a] of Object.entries(aircraftMap)) {
-      if (a.model === picked.id) { selectAircraft(k); return; }
-    }
+// ═══════════════════════════════════════════════
+const handler=new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
+handler.setInputAction(click=>{
+  const picked=viewer.scene.pick(click.position);
+  if(Cesium.defined(picked)&&Cesium.defined(picked.id)){
+    for(const [k,a] of Object.entries(aircraftMap)){if(a.model===picked.id){selectAC(k);return;}}
   }
-  if (currentMode === 'FREE') deselectAircraft();
-}, Cesium.ScreenSpaceEventType.LEFT_CLICK);
+  if(camMode==='FREE') deselectAC();
+},Cesium.ScreenSpaceEventType.LEFT_CLICK);
 
-// ═══════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════
+//  LEGEND TOGGLES
+// ═══════════════════════════════════════════════
+document.querySelectorAll('.leg-row[data-layer]').forEach(row=>{
+  row.addEventListener('click',()=>{
+    const name=row.dataset.layer;
+    visible[name]=!visible[name];
+    layers[name]?.forEach(e=>{e.show=visible[name];});
+    row.classList.toggle('off',!visible[name]);
+  });
+});
+
+// ═══════════════════════════════════════════════
 //  TOAST
-// ═══════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════
 let toastTimer;
-function toast(msg) {
-  const el = document.getElementById('toast');
-  el.textContent = msg; el.classList.add('show');
+function toast(msg){
+  const el=document.getElementById('toast');
+  el.textContent=msg; el.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.classList.remove('show'), 2800);
+  toastTimer=setTimeout(()=>el.classList.remove('show'),2600);
 }
 
-// ═══════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════
 //  BOOT
-// ═══════════════════════════════════════════════════════
-fetchAircraft();
-setInterval(fetchAircraft, 5000);
+// ═══════════════════════════════════════════════
+(async()=>{
+  // Fly to KIAD in RADAR view
+  viewer.camera.flyTo({
+    destination:Cesium.Cartesian3.fromDegrees(-77.4558,38.9445,14000),
+    orientation:{heading:Cesium.Math.toRadians(15),pitch:Cesium.Math.toRadians(-38),roll:0},
+    duration:0,
+  });
+
+  // Draw all layers (wrapped in try-catch per bugs_fixed.md)
+  try { addRunways();       } catch(e){console.error('runways:',e);}
+  try { addCenterlines();   } catch(e){console.error('centerlines:',e);}
+  try { addILS();           } catch(e){console.error('ils:',e);}
+  try { addAirspace();      } catch(e){console.error('airspace:',e);}
+  try { addRoutes();        } catch(e){console.error('routes:',e);}
+  try { addSpecialUse();    } catch(e){console.error('specialuse:',e);}
+  try { addGrid();          } catch(e){console.error('grid:',e);}
+  try { addInferenceZones();} catch(e){console.error('inference:',e);}
+
+  // Start in RADAR position
+  setATCPos('RADAR');
+
+  // Hide routes/grid initially
+  layers.routes.forEach(e=>{e.show=false;});
+  layers.grid.forEach(e=>{e.show=false;});
+
+  // Live data
+  await fetchAircraft();
+  setInterval(fetchAircraft,5000);
+})();
 </script>
 </body>
 </html>
