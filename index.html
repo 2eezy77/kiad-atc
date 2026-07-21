@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <title>KIAD ATC Visualization</title>
+  <title>KIAD ATC</title>
   <script src="https://cesium.com/downloads/cesiumjs/releases/1.115/Build/Cesium/Cesium.js"></script>
   <link href="https://cesium.com/downloads/cesiumjs/releases/1.115/Build/Cesium/Widgets/widgets.css" rel="stylesheet" />
   <style>
@@ -265,7 +265,17 @@
     // ── API keys (injected by server.py from env vars — never hard-code here) ───
     const CESIUM_TOKEN = "__CESIUM_TOKEN__";
     const GOOGLE_KEY   = "__GOOGLE_KEY__";
+    const keysReady = Boolean(
+      CESIUM_TOKEN && GOOGLE_KEY &&
+      !CESIUM_TOKEN.includes("__CESIUM") &&
+      !GOOGLE_KEY.includes("__GOOGLE")
+    );
+    // ?portfolio=1 — tower view, suppress conflict banners for clean README shots
+    const portfolioMode = new URLSearchParams(location.search).has("portfolio");
     Cesium.Ion.defaultAccessToken = CESIUM_TOKEN;
+    // Portfolio/screenshot hook: set true only after base tiles are ready.
+    window.__KIAD_TILES_READY__ = false;
+    window.__KIAD_TILES_ERROR__ = null;
 
     // ── Status ────────────────────────────────────────────────────────────────
     const statusEl = document.getElementById("status");
@@ -820,10 +830,14 @@
       'A109','A119','A139','A169','A189',
       'MD52','MD6X','MH6','OH58',
       'AW09','AW19','AW39',
+      'H60','UH60','HH60','MH60','S70I',
     ]);
     function isHelicopter(type) {
       if (!type) return false;
-      return HELO_TYPES.has(type.toUpperCase());
+      const t = type.toUpperCase().replace(/[^A-Z0-9]/g, '');
+      if (HELO_TYPES.has(t) || HELO_TYPES.has(type.toUpperCase())) return true;
+      // Common military / EMS rotorcraft type codes
+      return /^(H|UH|HH|MH|CH|AH)\d|^EC\d|^AS\d|^B4\d|^R(22|44|66)/.test(t);
     }
     function isVFR(squawk) {
       return squawk === '1200' || squawk === 1200;
@@ -910,7 +924,7 @@
         }),
       },
       // Local Control (7110.65 Ch3): runway environment, Class D, pattern, finals
-      TOWER: {
+      TWR: {
         label: "TWR · LOCAL CONTROL",
         layers: { runways:true, centerlines:true, ils:true, classb:false, classd:true, routes:false, aircraft:true, specialuse:false, grid:false, inference:false },
         // Class D SFC–3700ft AGL + ILS finals out to 10nm below 5000ft MSL (7110.65 3-1-9)
@@ -968,7 +982,7 @@
       clearConflicts();
       if (!currentPosition || !POSITIONS[currentPosition].conflicts) return;
 
-      const isTWR   = currentPosition === 'TOWER';
+      const isTWR   = currentPosition === 'TWR';
       const isRadar = currentPosition === 'RADAR';
 
       // TRACON works ≥1000ft (7110.65 Ch5); TWR works everything below
@@ -1040,7 +1054,9 @@
       entries.forEach(a => setAircraftColor(a, state[a.callsign] || 'NORMAL'));
 
       const banner = document.getElementById("conflict-banner");
-      if (conflictPairs > 0) {
+      if (portfolioMode) {
+        banner.style.display = 'none';
+      } else if (conflictPairs > 0) {
         banner.textContent = isTWR
           ? `⚠ RUNWAY CONFLICT — VERIFY SEPARATION`
           : `⚠ SEPARATION LOSS — ${conflictPairs} PAIR(S) — ISSUE TRAFFIC`;
@@ -1125,6 +1141,7 @@
     const RADAR_RANGE_NM = 80; // Extended range to show more traffic (KIAD TRACON ~50nm + buffer)
 
     function debugLog(msg) {
+      if (portfolioMode) { console.log(msg); return; }
       const panel = document.getElementById("debug-panel");
       if (panel) {
         panel.textContent += msg + "\n";
@@ -1143,7 +1160,7 @@
       const spd = String(Math.round((a.speed|| 0)      )).padStart(3, ' ');
       const seq = (a.seqOnFinal > 0 && currentPosition !== 'GND') ? `#${a.seqOnFinal} ` : '';
       if (currentPosition === 'RADAR') return `${seq}${a.callsign}\n${fl} ${spd}`;
-      if (currentPosition === 'TOWER') return `${seq}${a.callsign}\n${fl}`;
+      if (currentPosition === 'TWR') return `${seq}${a.callsign}\n${fl}`;
       return a.callsign;
     }
 
@@ -1168,12 +1185,49 @@
       return 2 * R * Math.asin(Math.sqrt(a));
     }
 
+    function portfolioSeedTraffic() {
+      // Realistic KIAD sample for README shots when live ADS-B is rate-limited
+      // Format matches /api/aircraft values: [icao,lat,lon,hdg,alt,spd,squawk,_,type,reg,...]
+      const seed = {
+        aal1904: ["aal1904", 38.9900, -77.4570, 190, 2200, 145, "2101", "N/A", "B738", "N918NN", 0, "", "KIAD", "AAL1904", 0, -750, "AAL1904"],
+        uca4259: ["uca4259", 39.0400, -77.4565, 188, 3200, 160, "2612", "N/A", "E45X", "N123UQ", 0, "", "KIAD", "UCA4259", 0, -700, "UCA4259"],
+        afr53x:  ["afr53x",  38.9700, -77.4740, 191, 900, 138, "0512", "N/A", "B77W", "F-GSQA", 0, "", "KIAD", "AFR53X", 0, -650, "AFR53X"],
+        pat21:   ["pat21",   38.9550, -77.4900, 95, 1400, 110, "1200", "N/A", "H60", "PAT21", 0, "", "", "PAT21", 0, 0, "PAT21"],
+        n921ll:  ["n921ll",  38.9350, -77.4400, 270, 900, 95, "1200", "N/A", "EC55", "N921LL", 0, "", "", "N921LL", 0, 0, "N921LL"],
+        swa1089: ["swa1089", 38.9100, -77.4550, 10, 2800, 170, "2744", "N/A", "B738", "N8632F", 0, "", "KIAD", "SWA1089", 0, -600, "SWA1089"],
+        jia5333: ["jia5333", 39.0150, -77.4200, 220, 4500, 210, "3011", "N/A", "CRJ7", "N509AE", 0, "", "KIAD", "JIA5333", 0, -500, "JIA5333"],
+        n12lx:   ["n12lx",   38.9600, -77.5200, 80, 3500, 240, "1200", "N/A", "F2TH", "N12LX", 0, "", "", "N12LX", 0, 0, "N12LX"],
+      };
+      return seed;
+    }
+
     async function fetchAircraft() {
       if (!viewer) { debugLog("ERROR: viewer not ready"); return; }
       try {
-        const res = await fetch("/api/aircraft");
-        const data = await res.json();
-        if (data.error) { debugLog(`API error: ${data.error}`); return; }
+        let data;
+        if (portfolioMode) {
+          // Prefer seed for stable README framing; try live briefly then fall back
+          const ctrl = new AbortController();
+          const timer = setTimeout(() => ctrl.abort(), 2500);
+          try {
+            const res = await fetch("/api/aircraft", { signal: ctrl.signal });
+            data = await res.json();
+            if (data.error || !data || Object.keys(data).filter(k => Array.isArray(data[k])).length === 0) {
+              data = portfolioSeedTraffic();
+            }
+          } catch (_) {
+            data = portfolioSeedTraffic();
+          } finally {
+            clearTimeout(timer);
+          }
+        } else {
+          const res = await fetch("/api/aircraft");
+          data = await res.json();
+          if (data.error || !data || Object.keys(data).length === 0) {
+            if (data.error) debugLog(`API error: ${data.error}`);
+            if (data.error) return;
+          }
+        }
 
         const now = viewer.clock.currentTime.clone();
         const seen = new Set();
@@ -1391,7 +1445,7 @@
         .join("<br>");
 
       if (list && visible.aircraft) {
-        const label = currentPosition === 'TOWER' ? 'Pattern / Final' : 'TRACON Traffic';
+        const label = currentPosition === 'TWR' ? 'Pattern / Final' : 'TRACON Traffic';
         info.innerHTML = `<strong>${label}</strong><br>${list}`;
         info.style.display = "block";
       } else {
@@ -1735,25 +1789,43 @@
       flyToKIAD(false);
 
       // ── Load Google 3D Tiles with cost limiting ──────────────────────────
+      async function waitForInitialTiles(tileset, timeoutMs = 45000) {
+        if (!tileset) throw new Error("No tileset");
+        if (tileset.tilesLoaded) return;
+        await new Promise((resolve, reject) => {
+          const timer = setTimeout(() => {
+            remove();
+            reject(new Error("Timed out waiting for initial tiles"));
+          }, timeoutMs);
+          const remove = tileset.initialTilesLoaded.addEventListener(() => {
+            clearTimeout(timer);
+            remove();
+            resolve();
+          });
+        });
+      }
+
       log("Loading Google Photorealistic 3D Tiles…");
       let googleTiles = null;
       let isTileRequestsPaused = false;
-      let lastCameraPosition = null;
 
       // Pause tile requests when window loses focus (user away)
       window.addEventListener("blur", () => {
         isTileRequestsPaused = true;
         if (googleTiles) googleTiles.dynamicScreenSpaceError = false;
-        log("⏸ Tile requests paused (window inactive)");
+        log("Tile requests paused (window inactive)");
       });
       window.addEventListener("focus", () => {
         isTileRequestsPaused = false;
         if (googleTiles) googleTiles.dynamicScreenSpaceError = true;
-        log("▶ Tile requests resumed");
+        log("Tile requests resumed");
         fadeStatus(2500);
       });
 
-      try {
+      if (!keysReady) {
+        window.__KIAD_TILES_ERROR__ = "Missing CESIUM_TOKEN / GOOGLE_KEY (set them in .env and restart the server)";
+        log("Missing map API keys — set CESIUM_TOKEN and GOOGLE_KEY in .env, then restart python server.py");
+      } else try {
         googleTiles = await Cesium.Cesium3DTileset.fromUrl(
           `https://tile.googleapis.com/v1/3dtiles/root.json?key=${GOOGLE_KEY}`
         );
@@ -1763,7 +1835,7 @@
         googleTiles.dynamicScreenSpaceErrorFactor  = 4.0;
         googleTiles.maximumMemoryUsage             = 512;
 
-        // Throttle tile loads: only fetch when camera moves significantly
+        // Throttle tile loads based on camera height
         viewer.scene.preRender.addEventListener(() => {
           if (isTileRequestsPaused) return;
 
@@ -1776,13 +1848,27 @@
 
         viewer.scene.primitives.add(googleTiles);
         viewer.scene.globe.show = false;
-        log("✓ Google tiles loaded with request limiting — KIAD ATC overlay ready");
+
+        // Oblique tower view so photorealistic buildings are visible before ready flag
+        setPosition("TWR");
+        await waitForInitialTiles(googleTiles);
+        // Give the renderer a couple frames to paint streamed tiles
+        await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+        window.__KIAD_TILES_READY__ = true;
+        log("Google Photorealistic 3D Tiles ready — KIAD ATC overlay ready");
         fadeStatus(2500);
       } catch (err) {
-        log("Google tiles failed — falling back to OSM + terrain…");
+        log("Google Photorealistic tiles failed — trying Cesium Ion / OSM fallbacks…");
         console.error(err);
         classifType = Cesium.ClassificationType.BOTH;
-        try { viewer.terrainProvider = await Cesium.createWorldTerrainAsync(); } catch(e) {}
+        let recovered = false;
+
+        try {
+          viewer.terrainProvider = await Cesium.createWorldTerrainAsync();
+        } catch (e) {
+          console.error("World terrain failed:", e);
+        }
+
         try {
           const buildings = await Cesium.Cesium3DTileset.fromIonAssetId(96188);
           buildings.dynamicScreenSpaceError        = true;
@@ -1795,11 +1881,42 @@
             buildings.maximumScreenSpaceError = Cesium.Math.clamp(4 * Math.log2(h / 400 + 1), 4, 32);
           });
           viewer.scene.primitives.add(buildings);
-          log("✓ OSM buildings loaded — KIAD ATC overlay ready");
+          setPosition("TWR");
+          await waitForInitialTiles(buildings);
+          await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+          window.__KIAD_TILES_READY__ = true;
+          window.__KIAD_TILES_ERROR__ = "google-failed-used-ion-fallback";
+          recovered = true;
+          log("Cesium Ion OSM buildings loaded — KIAD ATC overlay ready");
           fadeStatus(2500);
         } catch (e) {
-          log("❌ Tile load failed — check console (Cmd+Option+J)");
-          console.error(e);
+          console.error("Ion OSM buildings failed:", e);
+        }
+
+        if (!recovered) {
+          try {
+            // Last-resort basemap: no API key required (2D OSM, not Photorealistic)
+            viewer.scene.globe.show = true;
+            viewer.imageryLayers.removeAll();
+            viewer.imageryLayers.addImageryProvider(
+              new Cesium.UrlTemplateImageryProvider({
+                url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+                credit: "© OpenStreetMap contributors",
+                maximumLevel: 19,
+              })
+            );
+            setPosition("TWR");
+            await new Promise((r) => setTimeout(r, 2500));
+            window.__KIAD_TILES_READY__ = true;
+            window.__KIAD_TILES_ERROR__ = "used-osm-raster-fallback";
+            recovered = true;
+            log("OSM raster basemap loaded (enable Google Map Tiles API for Photorealistic 3D)");
+            fadeStatus(4000);
+          } catch (e2) {
+            window.__KIAD_TILES_ERROR__ = String(e2 && e2.message ? e2.message : e2);
+            log("Tile load failed — open the browser console (F12) for details");
+            console.error(e2);
+          }
         }
       }
 
@@ -1829,14 +1946,75 @@
       viewer.clock.multiplier = 1;
       viewer.clock.shouldAnimate = true;
 
-      setPosition("RADAR");
+      setPosition(portfolioMode ? "TWR" : "RADAR");
 
       setTimeout(() => {
         fetchAircraft();
         setInterval(() => {
           if (viewer && visible.aircraft) fetchAircraft();
         }, 5000);
-      }, 1000);
+      }, portfolioMode ? 2500 : 1000);
+
+      // Extra settle time after camera move so README screenshots catch painted tiles
+      if (window.__KIAD_TILES_READY__) {
+        setTimeout(() => { window.__KIAD_SCREENSHOT_READY__ = true; }, portfolioMode ? 4000 : 1500);
+      }
+
+      // Portfolio/screenshot helpers (no secrets — camera + layer framing only)
+      window.__KIAD__ = {
+        setPosition,
+        fetchAircraft,
+        setLayer(name, show) {
+          visible[name] = show;
+          if (layers[name]) layers[name].forEach(e => { e.show = show; });
+          const row = document.querySelector(`.legend-row[data-layer="${name}"]`);
+          if (row) row.classList.toggle("off", !show);
+        },
+        hideChrome() {
+          ["#status", "#debug-panel", "#conflict-banner", "#search-bar", "#home-btn"].forEach(sel => {
+            const el = document.querySelector(sel);
+            if (el) el.style.setProperty("display", "none", "important");
+          });
+          // Keep API error spam out of README shots even if debug updates later
+          const dbg = document.getElementById("debug-panel");
+          if (dbg) {
+            dbg.textContent = "";
+            dbg.style.setProperty("display", "none", "important");
+            const obs = new MutationObserver(() => {
+              dbg.style.setProperty("display", "none", "important");
+              dbg.textContent = "";
+            });
+            obs.observe(dbg, { childList: true, characterData: true, subtree: true, attributes: true });
+          }
+        },
+        openPanels() {
+          ["left-panel-body", "right-panel-body"].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.classList.add("open");
+          });
+        },
+        flyTo(lon, lat, height, headingDeg, pitchDeg, duration = 0) {
+          viewer.camera.cancelFlight();
+          viewer.camera.setView({
+            destination: Cesium.Cartesian3.fromDegrees(lon, lat, height),
+            orientation: {
+              heading: Cesium.Math.toRadians(headingDeg),
+              pitch: Cesium.Math.toRadians(pitchDeg),
+              roll: 0,
+            },
+          });
+        },
+        aircraftSummary() {
+          return Object.values(aircraftMap).map(a => ({
+            callsign: a.callsign,
+            type: a.ac_type,
+            alt: a.alt,
+            helo: isHelicopter(a.ac_type),
+            lon: a.lon,
+            lat: a.lat,
+          }));
+        },
+      };
     })();
 
     // ── Panel toggle ────────────────────────────────────────────────────────

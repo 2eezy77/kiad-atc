@@ -1,15 +1,19 @@
 #!/usr/bin/env python3
 """Local dev server with CORS proxy for aircraft data."""
-import http.server, urllib.request, json, os
+import http.server, urllib.request, json, os, time, threading
+from socketserver import ThreadingMixIn
 
 # KIAD: 38.9445°N 77.4558°W — query 50nm radius
 KIAD_LAT, KIAD_LON, RADIUS_NM = 38.9445, -77.4558, 50
+_CACHE = {"data": None, "ts": 0.0, "lock": threading.Lock()}
+_CACHE_TTL_S = 8.0
 
 class Handler(http.server.SimpleHTTPRequestHandler):
     def do_GET(self):
-        if self.path.startswith("/api/aircraft"):
+        path = self.path.split("?", 1)[0]
+        if path.startswith("/api/aircraft"):
             self.proxy_aircraft()
-        elif self.path in ("/", "/index.html"):
+        elif path in ("/", "/index.html"):
             self.serve_index()
         else:
             super().do_GET()
@@ -32,6 +36,11 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         self.wfile.write(data)
 
     def proxy_aircraft(self):
+        now = time.time()
+        with _CACHE["lock"]:
+            if _CACHE["data"] is not None and (now - _CACHE["ts"]) < _CACHE_TTL_S:
+                self._send_json(200, _CACHE["data"])
+                return
         try:
             filtered = self._fetch_adsbx()
         except Exception as e1:
@@ -39,8 +48,16 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             try:
                 filtered = self._fetch_opensky()
             except Exception as e2:
+                with _CACHE["lock"]:
+                    if _CACHE["data"] is not None:
+                        # Serve last good traffic during upstream rate limits
+                        self._send_json(200, _CACHE["data"])
+                        return
                 self._send_json(502, {"error": f"adsbx: {e1}  opensky: {e2}"})
                 return
+        with _CACHE["lock"]:
+            _CACHE["data"] = filtered
+            _CACHE["ts"] = time.time()
         self._send_json(200, filtered)
 
     def _fetch_adsbx(self):
@@ -128,18 +145,30 @@ def load_dotenv(path=".env"):
     Does not override variables already set in the environment."""
     if not os.path.exists(path):
         return
-    with open(path) as f:
+    with open(path, encoding="utf-8-sig") as f:
         for line in f:
             line = line.strip()
             if not line or line.startswith("#") or "=" not in line:
                 continue
             key, _, val = line.partition("=")
-            os.environ.setdefault(key.strip(), val.strip().strip('"').strip("'"))
+            key, val = key.strip(), val.strip().strip('"').strip("'")
+            # Overwrite empty placeholders so a blank shell env cannot block .env
+            if key and (key not in os.environ or not str(os.environ.get(key, "")).strip()):
+                os.environ[key] = val
+
+
+class ThreadingHTTPServer(ThreadingMixIn, http.server.HTTPServer):
+    daemon_threads = True
 
 
 if __name__ == "__main__":
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
     load_dotenv()
     port = int(os.environ.get("PORT", 8080))
+    cesium_len = len(os.environ.get("CESIUM_TOKEN", ""))
+    google_len = len(os.environ.get("GOOGLE_KEY", ""))
     print(f"Server running at http://localhost:{port}")
-    http.server.HTTPServer(("", port), Handler).serve_forever()
+    print(f"Env keys loaded: CESIUM_TOKEN len={cesium_len}, GOOGLE_KEY len={google_len}")
+    if cesium_len < 20 or google_len < 20:
+        print("WARNING: map keys missing or too short — tiles will fail. Check .env")
+    ThreadingHTTPServer(("127.0.0.1", port), Handler).serve_forever()

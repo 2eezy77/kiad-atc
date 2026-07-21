@@ -1,4 +1,6 @@
-# KIAD ATC Visualization
+# KIAD ATC
+
+**Author:** Jose I. Montero
 
 A browser-based 3D air-traffic-control view of **Washington Dulles International Airport (KIAD)**.
 It renders live aircraft over Google Photorealistic 3D Tiles and overlays the runway
@@ -7,6 +9,20 @@ environment, ILS approaches, Class B/D airspace, and FAA-style separation-confli
 Built on [CesiumJS](https://cesium.com/platform/cesiumjs/) with a tiny Python proxy that
 streams live ADS-B traffic.
 
+![KIAD ATC — Tower view of finals and ILS](docs/kiad-atc-ui.jpg)
+
+*Tower (oblique) view of KIAD with ILS approach funnels, arrivals on final, and ATC panels.
+Photorealistic 3D tiles and Cesium terrain require `CESIUM_TOKEN` and `GOOGLE_KEY` in a local `.env` — see [Configuration](#configuration--api-keys).*
+
+### Portfolio screenshots
+
+| | |
+|:--|:--|
+| ![Final approach / ILS descent](docs/kiad-final-approach.jpg) | ![Class B upside-down cake](docs/kiad-class-b-cake.jpg) |
+| *Aircraft on final with 3° ILS approach geometry* | *Shelved Class B “upside-down cake” rings* |
+| ![Overlay layers panel](docs/kiad-layers.jpg) | ![Helicopters and mixed types](docs/kiad-aircraft-variety.jpg) |
+| *Overlay Layers toggles (runways, ILS, Class B/D, traffic)* | *Helicopters and mixed airframe types around the field* |
+
 ---
 
 ## Features
@@ -14,9 +30,9 @@ streams live ADS-B traffic.
 - **Live traffic** — aircraft within 50 nm of KIAD, refreshed every 5 seconds, drawn as
   type-matched 3D models (Flightradar24 open GLB models).
 - **Three ATC positions** — switch camera + visible layers to match a controller's job:
-  - 📡 **RADAR · TRACON** — top-down, full Class B, all traffic
-  - 🗼 **TWR · Local Control** — oblique tower view, Class D + ILS finals
-  - 🛬 **GND · Ground Control** — overhead surface view of the airport
+  - **RADAR · TRACON** — top-down, full Class B, all traffic
+  - **TWR · Local Control** — oblique tower view, Class D + ILS finals
+  - **GND · Ground Control** — overhead surface view of the airport
 - **Airspace & procedures overlays** — three parallel runways (01L/C/R ↔ 19R/C/L), ILS
   approach funnels and centerlines, shelved Class B rings, Class D, and arrival/departure routes.
 - **Separation-conflict detection** — flags loss of separation per FAA JO 7110.65
@@ -42,10 +58,12 @@ streams live ADS-B traffic.
 ## Project structure
 
 ```
-index.html    Single-page app — Cesium scene, overlays, ATC logic, UI
-server.py     Static file server + /api/aircraft proxy (adsb.lol → OpenSky)
-Procfile      Process definition for deployment (web: python3 server.py)
-runtime.txt   Python version pin (python-3.11)
+index.html      Single-page app — Cesium scene, overlays, ATC logic, UI
+server.py       Static file server + /api/aircraft proxy (adsb.lol → OpenSky)
+.env.example    Placeholder env vars (CESIUM_TOKEN, GOOGLE_KEY, optional PORT)
+docs/           README screenshots
+Procfile        Process definition for deployment (web: python3 server.py)
+runtime.txt     Python version pin (python-3.11)
 ```
 
 ## Running locally
@@ -56,7 +74,13 @@ Requires **Python 3.11+**. No dependencies to install — the server uses only t
 python3 server.py
 ```
 
-Then open <http://localhost:8080>.
+Then open <http://localhost:8080> (or the `PORT` from your `.env`, often `8877`).
+
+For clean portfolio / README framing (tower view, conflict banner suppressed):
+
+```text
+http://localhost:8877/?portfolio=1
+```
 
 The server listens on `PORT` if set (defaults to `8080`) and proxies live aircraft data at
 `/api/aircraft`, so the browser is never blocked by CORS.
@@ -85,6 +109,12 @@ variables, so no secrets are committed.
 Provide them either as real environment variables or via a git-ignored `.env` file in the project
 root:
 
+Copy `.env.example` to `.env` and fill in placeholders (`.env` is git-ignored):
+
+```bash
+cp .env.example .env
+```
+
 ```env
 CESIUM_TOKEN=your-cesium-ion-token
 GOOGLE_KEY=your-google-maps-tiles-key
@@ -99,6 +129,10 @@ public once deployed (they are served to the browser). Rotate them if they are e
 - Separation logic is an **educational visualization**, not an operational ATC tool, and must not
   be used for real air-traffic decisions.
 
+## License
+
+MIT — see [LICENSE](LICENSE).
+
 ---
 
-*KIAD ATC Visualization — a personal aviation dataviz project.*
+*KIAD ATC — a personal aviation dataviz project.*
