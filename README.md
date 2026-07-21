@@ -1,48 +1,48 @@
-# Real-time geospatial traffic visualization (KIAD)
+# KIAD Geospatial Viz
 
 **Author:** Jose I. Montero
 
-A browser-based **real-time 3D visualization** system using aviation traffic around
-**Washington Dulles (KIAD)** as the problem domain. It combines CesiumJS geospatial
-rendering, Google Photorealistic 3D Tiles, a live ADS-B ingest pipeline, layered
-airspace/procedure overlays, and a small UI for camera presets and conflict cues.
+Real-time **geospatial visualization** and **UI systems** demo centered on Washington Dulles (KIAD).
+A CesiumJS / WebGL client composites photorealistic 3D tiles, terrain, and live traffic entities with
+toggleable airspace overlays, camera modes, and conflict highlighting — aviation is the problem domain;
+the engineering focus is rendering, data plumbing, and interactive layers.
 
-Built on [CesiumJS](https://cesium.com/platform/cesiumjs/) with a tiny Python proxy that
-streams live ADS-B traffic to the client.
+Built on [CesiumJS](https://cesium.com/platform/cesiumjs/) with a small Python service that
+proxies and normalizes live ADS-B feeds for the browser.
 
-![KIAD scene — tower view of finals and ILS](docs/kiad-atc-ui.jpg)
+![KIAD geospatial viz — tower camera, approach geometry, overlay panels](docs/kiad-atc-ui.jpg)
 
-*Oblique camera over KIAD with ILS approach funnels, live traffic, and overlay panels.
+*Oblique camera over KIAD with approach geometry, live entities, and control panels.
 Photorealistic 3D tiles and Cesium terrain require `CESIUM_TOKEN` and `GOOGLE_KEY` in a local `.env` — see [Configuration](#configuration--api-keys).*
 
 ### Screenshots
 
 | | |
 |:--|:--|
-| ![Final approach / ILS descent](docs/kiad-final-approach.jpg) | ![Class B upside-down cake](docs/kiad-class-b-cake.jpg) |
-| *Aircraft on final with 3° ILS approach geometry* | *Shelved Class B “upside-down cake” rings* |
-| ![Overlay layers panel](docs/kiad-layers.jpg) | ![Helicopters and mixed types](docs/kiad-aircraft-variety.jpg) |
-| *Overlay Layers toggles (runways, ILS, Class B/D, traffic)* | *Helicopters and mixed airframe types around the field* |
+| ![Final approach geometry](docs/kiad-final-approach.jpg) | ![Shelved airspace rings](docs/kiad-class-b-cake.jpg) |
+| *Entities on final with 3° approach geometry* | *Shelved Class B airspace rings* |
+| ![Overlay layers panel](docs/kiad-layers.jpg) | ![Mixed entity types](docs/kiad-aircraft-variety.jpg) |
+| *Layer toggles (runways, approaches, airspace, traffic)* | *Mixed airframe types around the field* |
 
 ---
 
 ## Features
 
-- **Live data pipeline** — aircraft within 50 nm of KIAD, refreshed every 5 seconds, drawn as
+- **Live entity stream** — traffic within 50 nm of KIAD, refreshed every 5 seconds, drawn as
   type-matched 3D models (Flightradar24 open GLB models).
-- **Camera / layer presets** — switch viewpoint and visible layers for different ops views:
+- **Camera / layer presets** — switch viewpoint and visible layers for different ops styles:
   - **RADAR · TRACON** — top-down, full Class B, all traffic
-  - **TWR · Local** — oblique tower view, Class D + ILS finals
+  - **TWR · Local** — oblique tower view, Class D + approach finals
   - **GND · Surface** — overhead surface view of the airport
 - **Geospatial overlays** — three parallel runways (01L/C/R ↔ 19R/C/L), ILS
   approach funnels and centerlines, shelved Class B rings, Class D, and arrival/departure routes.
-- **Rule-based conflict cues** — flags loss of separation per FAA JO 7110.65
+- **Separation highlighting** — flags loss of separation per FAA JO 7110.65
   (3 nm / 1000 ft radar separation, runway separation, and wake-turbulence advisories) with an
-  on-screen banner and conflict lines between affected pairs.
-- **Layered UI** — toggle individual overlay layers on/off.
+  on-screen banner and lines between affected pairs.
+- **Interactive legend** — toggle individual overlay layers on/off.
 - **Photorealistic base map** — Google Photorealistic 3D Tiles with automatic fallback to
   OpenStreetMap + Cesium World Terrain + Ion OSM buildings if unavailable.
-- **Mobile support** — works on iPhone with a touch-friendly floating panel UI.
+- **Mobile-friendly UI** — works on iPhone with a touch-friendly floating panel.
 - **Cost-aware tile loading** — pauses tile requests when the window loses focus and throttles
   loads based on camera movement to limit Google Tiles usage.
 
@@ -51,7 +51,7 @@ Photorealistic 3D tiles and Cesium terrain require `CESIUM_TOKEN` and `GOOGLE_KE
 | Layer      | Technology                                                              |
 | ---------- | ----------------------------------------------------------------------- |
 | Rendering  | CesiumJS 1.115, Google Photorealistic 3D Tiles, Cesium Ion              |
-| Live feed  | [adsb.lol](https://adsb.lol) (ADS-B Exchange feed) → OpenSky fallback   |
+| Live data  | [adsb.lol](https://adsb.lol) (ADS-B Exchange feed) → OpenSky fallback   |
 | 3D models  | Flightradar24 open-source GLB aircraft models                           |
 | Backend    | Python 3.11 standard library (`http.server`) — static host + CORS proxy |
 | Frontend   | Single self-contained `index.html` (no build step)                      |
@@ -59,7 +59,7 @@ Photorealistic 3D tiles and Cesium terrain require `CESIUM_TOKEN` and `GOOGLE_KE
 ## Project structure
 
 ```
-index.html      Single-page app — Cesium scene, overlays, domain logic, UI
+index.html      Single-page app — Cesium scene, overlays, client logic, UI
 server.py       Static file server + /api/aircraft proxy (adsb.lol → OpenSky)
 .env.example    Placeholder env vars (CESIUM_TOKEN, GOOGLE_KEY, optional PORT)
 docs/           README screenshots
@@ -77,7 +77,7 @@ python3 server.py
 
 Then open <http://localhost:8080> (or the `PORT` from your `.env`, often `8877`).
 
-For a clean demo framing (tower view, conflict banner suppressed):
+For a stable demo framing (tower view, conflict banner suppressed):
 
 ```text
 http://localhost:8877/?portfolio=1
@@ -86,7 +86,7 @@ http://localhost:8877/?portfolio=1
 The server listens on `PORT` if set (defaults to `8080`) and proxies live aircraft data at
 `/api/aircraft`, so the browser is never blocked by CORS.
 
-## How aircraft data works
+## How the data pipeline works
 
 `server.py` exposes `GET /api/aircraft`, which:
 
@@ -127,8 +127,8 @@ public once deployed (they are served to the browser). Rotate them if they are e
 ## Notes
 
 - Runway thresholds and ILS geometry are derived from FAA NASR data.
-- Separation logic is an **educational visualization**, not an operational air-traffic tool, and must not
-  be used for real traffic decisions.
+- Separation logic is an **educational visualization**, not an operational ATC tool, and must not
+  be used for real air-traffic decisions.
 
 ## License
 
@@ -136,4 +136,4 @@ MIT — see [LICENSE](LICENSE).
 
 ---
 
-*Real-time geospatial viz demo — aviation as the domain.*
+*Geospatial / real-time visualization demo using airport operations as the domain.*
